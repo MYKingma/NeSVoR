@@ -5,6 +5,8 @@ import nibabel as nib
 import sys
 
 # Plot volume
+
+
 class IndexTracker(object):
     def __init__(self, ax, X):
         self.ax = ax
@@ -29,6 +31,7 @@ class IndexTracker(object):
         self.ax.set_ylabel('slice %s' % self.ind)
         self.im.axes.figure.canvas.draw()
 
+
 def plotVolume(volumeData):
     fig, ax = plt.subplots(1, 1)
     plt.gray()
@@ -37,6 +40,7 @@ def plotVolume(volumeData):
     fig.canvas.mpl_connect('scroll_event', tracker.onscroll)
 
     plt.show()
+
 
 def plotSliceInOrientationFromVolume(volumeData, orientation, sliceNumber):
     if orientation == 0:
@@ -52,14 +56,17 @@ def plotSliceInOrientationFromVolume(volumeData, orientation, sliceNumber):
     plt.imshow(sliceData, cmap='gray')
     plt.show()
 
+
 def getFirstNiftiFileInDir(path):
     niftiFiles = [f for f in os.listdir(path) if f.endswith('.nii.gz')]
     return niftiFiles[0]
+
 
 def subsampleSliceData(sliceData, subsampleRate):
     # Subsample the slice data
     subsampledSliceData = sliceData[::subsampleRate, ::subsampleRate]
     return subsampledSliceData
+
 
 def getSliceFromDimension(volumeData, dimension, sliceNumber):
     # Get the slice from the volume data
@@ -74,6 +81,7 @@ def getSliceFromDimension(volumeData, dimension, sliceNumber):
         return
     return sliceData
 
+
 def subsampleVolumeForSliceDimension(volumeData, dimension, subsampleRate):
     sliceStack = []
     for sliceNumber in range(volumeData.shape[dimension]):
@@ -82,6 +90,14 @@ def subsampleVolumeForSliceDimension(volumeData, dimension, subsampleRate):
         sliceStack.append(subsampledSliceData)
     subsampledVolumeData = np.stack(sliceStack, axis=dimension)
     return subsampledVolumeData
+
+
+def subsample_volume(volumeData, subsampleRate):
+    # Subsample the volume data
+    subsampledVolumeData = volumeData[::subsampleRate,
+                                      ::subsampleRate, ::subsampleRate]
+    return subsampledVolumeData
+
 
 def saveStackInDirectory(subsampledVolumeData, orientation, niftiiFilename, outputPath):
     newFilename = niftiiFilename + "_" + str(orientation) + ".nii.gz"
@@ -95,6 +111,7 @@ def saveStackInDirectory(subsampledVolumeData, orientation, niftiiFilename, outp
 
     # Save the nifti file
     nib.save(newNifti, os.path.join(path, newFilename))
+
 
 def main():
     # Get the path to the directory containing the nifti files
@@ -111,15 +128,21 @@ def main():
     # Get the data from the nifti file
     niftiData = nifti.get_fdata()
 
+    # # Subsample the volume data
+    # subsampledVolumeDataX = subsampleVolumeForSliceDimension(niftiData, 0, 2)
+    # subsampledVolumeDataY = subsampleVolumeForSliceDimension(niftiData, 1, 2)
+    # subsampledVolumeDataZ = subsampleVolumeForSliceDimension(niftiData, 2, 2)
+
     # Subsample the volume data
-    subsampledVolumeDataX = subsampleVolumeForSliceDimension(niftiData, 0, 2)
-    subsampledVolumeDataY = subsampleVolumeForSliceDimension(niftiData, 1, 2)
-    subsampledVolumeDataZ = subsampleVolumeForSliceDimension(niftiData, 2, 2)
+    subsampledVolumeDataX = subsample_volume(niftiData, 2)
+    subsampledVolumeDataY = subsample_volume(niftiData, 2)
+    subsampledVolumeDataZ = subsample_volume(niftiData, 2)
 
     # Save the subsampled volume data
     saveStackInDirectory(subsampledVolumeDataX, 0, niftiFile, outputPath)
     saveStackInDirectory(subsampledVolumeDataY, 1, niftiFile, outputPath)
     saveStackInDirectory(subsampledVolumeDataZ, 2, niftiFile, outputPath)
+
 
 if __name__ == "__main__":
     main()
