@@ -1,3 +1,6 @@
+from scipy.ndimage import binary_fill_holes
+from skimage.morphology import remove_small_objects
+from skimage.filters import threshold_otsu
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -152,6 +155,24 @@ def saveStackInDirectory(subsampledVolumeData, orientation, niftiiFilename, outp
     nib.save(newNifti, os.path.join(path, newFilename))
 
 
+def compute_brain_mask(volume, threshold=None, min_size=1000):
+    # Compute threshold value using Otsu's algorithm if not provided
+    if threshold is None:
+        threshold = threshold_otsu(volume)
+
+    # Apply threshold to the volume
+    mask = np.zeros_like(volume)
+    mask[volume > threshold] = 1
+
+    # Fill any holes inside the brain
+    mask = binary_fill_holes(mask)
+
+    # Remove any small disconnected regions
+    mask = remove_small_objects(mask, min_size=min_size)
+
+    return mask
+
+
 def main():
     # Get the path to the directory containing the nifti files
     path = sys.argv[1]
@@ -182,11 +203,11 @@ def main():
     saveStackInDirectory(subsampledVolumeDataY, 1, niftiFile, outputPath)
     saveStackInDirectory(subsampledVolumeDataZ, 2, niftiFile, outputPath)
 
-    # Get mask of x orientation
-    maskX = subsampledVolumeDataX > 0
+    # Compute the brain mask of first orientation
+    brainMask = compute_brain_mask(subsampledVolumeDataX)
 
-    # Save the mask
-    saveStackInDirectory(maskX, 0, niftiFile + "_mask", outputPath)
+    # Save the brain mask
+    saveStackInDirectory(brainMask, 0, niftiFile + "_mask", outputPath)
 
 
 if __name__ == "__main__":
