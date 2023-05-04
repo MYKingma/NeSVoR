@@ -3,6 +3,7 @@ import numpy as np
 import os
 import nibabel as nib
 import sys
+from skimage.measure import block_reduce
 
 # Plot volume
 
@@ -98,32 +99,43 @@ def subsampleVolumeForSliceDimension(volumeData, dimension, subsampleRate):
 #                                       ::subsampleRate, ::subsampleRate]
 #     return subsampledVolumeData
 
-def subsample_volume(volumeData, subsampleRate):
-    # Get dimensions of the input volume
-    xDim, yDim, zDim = volumeData.shape
+# def subsample_volume(volumeData, subsampleRate):
+#     # Get dimensions of the input volume
+#     xDim, yDim, zDim = volumeData.shape
 
-    # Compute the new dimensions of the subsampled volume
-    xNewDim = int(np.ceil(xDim / subsampleRate))
-    yNewDim = int(np.ceil(yDim / subsampleRate))
-    zNewDim = int(np.ceil(zDim / subsampleRate))
+#     # Compute the new dimensions of the subsampled volume
+#     xNewDim = int(np.ceil(xDim / subsampleRate))
+#     yNewDim = int(np.ceil(yDim / subsampleRate))
+#     zNewDim = int(np.ceil(zDim / subsampleRate))
 
-    # Create an empty array to store the subsampled volume data
-    subsampledVolumeData = np.zeros((xNewDim, yNewDim, zNewDim))
+#     # Create an empty array to store the subsampled volume data
+#     subsampledVolumeData = np.zeros((xNewDim, yNewDim, zNewDim))
 
-    # Iterate over each subsampled pixel and compute the average value of the corresponding pixels in the input volume
-    for xIndex in range(xNewDim):
-        for yIndex in range(yNewDim):
-            for zIndex in range(zNewDim):
-                xStart = xIndex * subsampleRate
-                xEnd = min(xStart + subsampleRate, xDim)
-                yStart = yIndex * subsampleRate
-                yEnd = min(yStart + subsampleRate, yDim)
-                zStart = zIndex * subsampleRate
-                zEnd = min(zStart + subsampleRate, zDim)
-                subsampledVolumeData[xIndex, yIndex, zIndex] = np.mean(
-                    volumeData[xStart:xEnd, yStart:yEnd, zStart:zEnd])
+#     # Iterate over each subsampled pixel and compute the average value of the corresponding pixels in the input volume
+#     for xIndex in range(xNewDim):
+#         for yIndex in range(yNewDim):
+#             for zIndex in range(zNewDim):
+#                 xStart = xIndex * subsampleRate
+#                 xEnd = min(xStart + subsampleRate, xDim)
+#                 yStart = yIndex * subsampleRate
+#                 yEnd = min(yStart + subsampleRate, yDim)
+#                 zStart = zIndex * subsampleRate
+#                 zEnd = min(zStart + subsampleRate, zDim)
+#                 subsampledVolumeData[xIndex, yIndex, zIndex] = np.mean(
+#                     volumeData[xStart:xEnd, yStart:yEnd, zStart:zEnd])
 
-    return subsampledVolumeData
+#     return subsampledVolumeData
+
+def subsample_volume(volume, subsample_rate):
+    # Define the downsampling factor based on the subsample rate
+    factor = int(subsample_rate)
+
+    # Apply the block_reduce function with a mean function to the volume
+    downsampled_volume = block_reduce(
+        volume, block_size=(factor, factor, factor), func=np.mean)
+
+    # Return the downsampled volume
+    return downsampled_volume
 
 
 def saveStackInDirectory(subsampledVolumeData, orientation, niftiiFilename, outputPath):
