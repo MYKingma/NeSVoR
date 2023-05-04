@@ -182,6 +182,12 @@ def main():
     saveStackInDirectory(subsampledVolumeDataY, 1, niftiFile, outputPath)
     saveStackInDirectory(subsampledVolumeDataZ, 2, niftiFile, outputPath)
 
+    # Get mask of x orientation
+    maskX = subsampledVolumeDataX > 0
+
+    # Save the mask
+    saveStackInDirectory(maskX, 0, niftiFile + "_mask", outputPath)
+
 
 if __name__ == "__main__":
     main()
