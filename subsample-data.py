@@ -92,10 +92,37 @@ def subsampleVolumeForSliceDimension(volumeData, dimension, subsampleRate):
     return subsampledVolumeData
 
 
+# def subsample_volume(volumeData, subsampleRate):
+#     # Subsample the volume data
+#     subsampledVolumeData = volumeData[::subsampleRate,
+#                                       ::subsampleRate, ::subsampleRate]
+#     return subsampledVolumeData
+
 def subsample_volume(volumeData, subsampleRate):
-    # Subsample the volume data
-    subsampledVolumeData = volumeData[::subsampleRate,
-                                      ::subsampleRate, ::subsampleRate]
+    # Get dimensions of the input volume
+    xDim, yDim, zDim = volumeData.shape
+
+    # Compute the new dimensions of the subsampled volume
+    xNewDim = int(np.ceil(xDim / subsampleRate))
+    yNewDim = int(np.ceil(yDim / subsampleRate))
+    zNewDim = int(np.ceil(zDim / subsampleRate))
+
+    # Create an empty array to store the subsampled volume data
+    subsampledVolumeData = np.zeros((xNewDim, yNewDim, zNewDim))
+
+    # Iterate over each subsampled pixel and compute the average value of the corresponding pixels in the input volume
+    for xIndex in range(xNewDim):
+        for yIndex in range(yNewDim):
+            for zIndex in range(zNewDim):
+                xStart = xIndex * subsampleRate
+                xEnd = min(xStart + subsampleRate, xDim)
+                yStart = yIndex * subsampleRate
+                yEnd = min(yStart + subsampleRate, yDim)
+                zStart = zIndex * subsampleRate
+                zEnd = min(zStart + subsampleRate, zDim)
+                subsampledVolumeData[xIndex, yIndex, zIndex] = np.mean(
+                    volumeData[xStart:xEnd, yStart:yEnd, zStart:zEnd])
+
     return subsampledVolumeData
 
 
