@@ -31,7 +31,7 @@ def openAndPlotNifti(niftiFile):
 def getAllNiftiFilesInDir(path):
 
     # Get all nifti files in the path
-    niftiFiles = [f for f in os.listdir(path) if f.endswith('.nii')]
+    niftiFiles = [f for f in os.listdir(path) if f.endswith('.nii.gz')]
     return niftiFiles
 
 class IndexTracker(object):

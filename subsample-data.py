@@ -83,13 +83,13 @@ def subsampleVolumeForSliceDimension(volumeData, dimension, subsampleRate):
     subsampledVolumeData = np.stack(sliceStack, axis=dimension)
     return subsampledVolumeData
 
-def saveStackInDirectory(subsampledVolumeData, orientation, niftiiFilename):
+def saveStackInDirectory(subsampledVolumeData, orientation, niftiiFilename, outputPath):
     newFilename = niftiiFilename + "_" + str(orientation) + ".nii.gz"
     patientId = niftiiFilename.split("_")[0]
     newNifti = nib.Nifti1Image(subsampledVolumeData, np.eye(4))
 
     # Create folder in data/subsampled directory with patient id if it doesn't exist
-    path = os.path.join("data", "subsampled", patientId)
+    path = os.path.join(outputPath, patientId)
     if not os.path.exists(path):
         os.makedirs(path)
 
@@ -99,6 +99,7 @@ def saveStackInDirectory(subsampledVolumeData, orientation, niftiiFilename):
 def main():
     # Get the path to the directory containing the nifti files
     path = sys.argv[1]
+    outputPath = sys.argv[2]
 
     # Get the first nifti file in the directory
     niftiFile = getFirstNiftiFileInDir(path)
@@ -111,14 +112,14 @@ def main():
     niftiData = nifti.get_fdata()
 
     # Subsample the volume data
-    subsampledVolumeDataX = subsampleVolumeForSliceDimension(niftiData, 0, 3)
-    subsampledVolumeDataY = subsampleVolumeForSliceDimension(niftiData, 1, 3)
-    subsampledVolumeDataZ = subsampleVolumeForSliceDimension(niftiData, 2, 3)
+    subsampledVolumeDataX = subsampleVolumeForSliceDimension(niftiData, 0, 2)
+    subsampledVolumeDataY = subsampleVolumeForSliceDimension(niftiData, 1, 2)
+    subsampledVolumeDataZ = subsampleVolumeForSliceDimension(niftiData, 2, 2)
 
     # Save the subsampled volume data
-    saveStackInDirectory(subsampledVolumeDataX, 0, niftiFile)
-    saveStackInDirectory(subsampledVolumeDataY, 1, niftiFile)
-    saveStackInDirectory(subsampledVolumeDataZ, 2, niftiFile)
+    saveStackInDirectory(subsampledVolumeDataX, 0, niftiFile, outputPath)
+    saveStackInDirectory(subsampledVolumeDataY, 1, niftiFile, outputPath)
+    saveStackInDirectory(subsampledVolumeDataZ, 2, niftiFile, outputPath)
 
 if __name__ == "__main__":
     main()
