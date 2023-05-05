@@ -101,14 +101,17 @@ def subsample_volume(volume, subsample_rate):
     return downsampled_volume
 
 
-def save_stack_in_directory(subsampled_volume_data, orientation, niftii_filename, output_path, new_voxel_spacing):
+def save_stack_in_directory(subsampled_volume_data, orientation, niftii_filename, output_path, new_voxel_spacing = None):
     formatted_niftii_filename = niftii_filename + \
         "_" + str(orientation) + ".nii.gz"
     patient_id = niftii_filename.split("_")[0]
 
     # Create nifti file with new voxel spacing
     niftii_data = nib.Nifti1Image(subsampled_volume_data, np.eye(4))
-    niftii_data.header.set_zooms(new_voxel_spacing)
+
+    # Set the new voxel spacing if provided
+    if new_voxel_spacing is not None:
+        niftii_data.header.set_zooms(new_voxel_spacing)
 
     # Create folder in data/subsampled directory with patient id if it doesn't exist
     path = os.path.join(output_path, patient_id)
@@ -198,13 +201,21 @@ def preprocess_file(nifti_path, nifti_filename, output_path, subsample_rate, thr
 
         pbar.update(1)
 
+        # # Save the subsampled volume data
+        # save_stack_in_directory(subsampled_volume_data_x, 0,
+        #                         nifti_filename, output_path, new_voxel_spacing)
+        # save_stack_in_directory(subsampled_volume_data_y, 1,
+        #                         nifti_filename, output_path, new_voxel_spacing)
+        # save_stack_in_directory(subsampled_volume_data_z, 2,
+        #                         nifti_filename, output_path, new_voxel_spacing)
+
         # Save the subsampled volume data
         save_stack_in_directory(subsampled_volume_data_x, 0,
-                                nifti_filename, output_path, new_voxel_spacing)
+                                nifti_filename, output_path)
         save_stack_in_directory(subsampled_volume_data_y, 1,
-                                nifti_filename, output_path, new_voxel_spacing)
+                                nifti_filename, output_path)
         save_stack_in_directory(subsampled_volume_data_z, 2,
-                                nifti_filename, output_path, new_voxel_spacing)
+                                nifti_filename, output_path)
 
         pbar.update(1)
 
@@ -219,7 +230,8 @@ def preprocess_file(nifti_path, nifti_filename, output_path, subsample_rate, thr
 
         # Save the brain mask
         save_stack_in_directory(
-            brainMask, 0, nifti_filename + "_mask", output_path, new_voxel_spacing)
+            # brainMask, 0, nifti_filename + "_mask", output_path, new_voxel_spacing)
+            brainMask, 0, nifti_filename + "_mask", output_path)
 
 
 def main(args):
