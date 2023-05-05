@@ -7,8 +7,7 @@ import os
 import nibabel as nib
 import sys
 from skimage.measure import block_reduce, label
-
-# Plot volume
+from tqdm import tqdm
 
 
 class IndexTracker(object):
@@ -36,54 +35,54 @@ class IndexTracker(object):
         self.im.axes.figure.canvas.draw()
 
 
-def plot_volume(volumeData):
+def plot_volume(volume_data):
     fig, ax = plt.subplots(1, 1)
     plt.gray()
 
-    tracker = IndexTracker(ax, volumeData)
+    tracker = IndexTracker(ax, volume_data)
     fig.canvas.mpl_connect('scroll_event', tracker.onscroll)
 
     plt.show()
 
 
-def plot_slice_in_orientation_from_volume(volumeData, orientation, sliceNumber):
+def plot_slice_in_orientation_from_volume(volume_data, orientation, slice_number):
     if orientation == 0:
-        sliceData = volumeData[sliceNumber, :, :]
+        slice_data = volume_data[slice_number, :, :]
     elif orientation == 1:
-        sliceData = volumeData[:, sliceNumber, :]
+        slice_data = volume_data[:, slice_number, :]
     elif orientation == 2:
-        sliceData = volumeData[:, :, sliceNumber]
+        slice_data = volume_data[:, :, slice_number]
     else:
         print("Invalid orientation")
         return
 
-    plt.imshow(sliceData, cmap='gray')
+    plt.imshow(slice_data, cmap='gray')
     plt.show()
 
 
 def get_first_nifti_file_in_dir(path):
-    niftiFiles = [f for f in os.listdir(path) if f.endswith('.nii.gz')]
-    return niftiFiles[0]
+    nifti_files = [f for f in os.listdir(path) if f.endswith('.nii.gz')]
+    return nifti_files[0]
 
 
-def subsample_slice_data(sliceData, subsampleRate):
+def subsample_slice_data(slice_data, subsample_rate):
     # Subsample the slice data
-    subsampledSliceData = sliceData[::subsampleRate, ::subsampleRate]
-    return subsampledSliceData
+    subsampled_slice_data = slice_data[::subsample_rate, ::subsample_rate]
+    return subsampled_slice_data
 
 
-def get_slice_from_dimension(volumeData, dimension, sliceNumber):
+def get_slice_from_dimension(volume_data, dimension, slice_number):
     # Get the slice from the volume data
     if dimension == 0:
-        sliceData = volumeData[sliceNumber, :, :]
+        slice_data = volume_data[slice_number, :, :]
     elif dimension == 1:
-        sliceData = volumeData[:, sliceNumber, :]
+        slice_data = volume_data[:, slice_number, :]
     elif dimension == 2:
-        sliceData = volumeData[:, :, sliceNumber]
+        slice_data = volume_data[:, :, slice_number]
     else:
         print("Invalid dimension")
         return
-    return sliceData
+    return slice_data
 
 
 def subsample_volume(volume, subsample_rate):
@@ -98,18 +97,22 @@ def subsample_volume(volume, subsample_rate):
     return downsampled_volume
 
 
-def save_stack_in_directory(subsampledVolumeData, orientation, niftiiFilename, outputPath):
-    newFilename = niftiiFilename + "_" + str(orientation) + ".nii.gz"
-    patientId = niftiiFilename.split("_")[0]
-    newNifti = nib.Nifti1Image(subsampledVolumeData, np.eye(4))
+def save_stack_in_directory(subsampled_volume_data, orientation, niftii_filename, output_path, new_voxel_spacing):
+    formatted_niftii_filename = niftii_filename + \
+        "_" + str(orientation) + ".nii.gz"
+    patient_id = niftii_filename.split("_")[0]
+
+    # Create nifti file with new voxel spacing
+    niftii_data = nib.Nifti1Image(subsampled_volume_data, np.eye(4))
+    niftii_data.header.set_zooms(new_voxel_spacing)
 
     # Create folder in data/subsampled directory with patient id if it doesn't exist
-    path = os.path.join(outputPath, patientId)
+    path = os.path.join(output_path, patient_id)
     if not os.path.exists(path):
         os.makedirs(path)
 
     # Save the nifti file
-    nib.save(newNifti, os.path.join(path, newFilename))
+    nib.save(niftii_data, os.path.join(path, formatted_niftii_filename))
 
 
 def compute_brain_mask(volume, threshold=None, min_size=100):
@@ -147,9 +150,16 @@ def normalize_volume(volume):
     return volume
 
 
-def load_nifti_file(niftiPath):
+def load_nifti_file_and_get_new_voxel_spacing(niftiPath, subsample_rate):
     # Open the nifti file
     nifti = nib.load(niftiPath)
+
+    # Get voxel spacing
+    voxel_spacing = nifti.header.get_zooms()
+
+    # Calculate new voxel spacing
+    new_voxel_spacing = (voxel_spacing[0] * subsample_rate,
+                         voxel_spacing[1] * subsample_rate, voxel_spacing[2] * subsample_rate)
 
     # Get the data from the nifti file
     nifti_data = nifti.get_fdata()
@@ -157,67 +167,108 @@ def load_nifti_file(niftiPath):
     # Get absolute value of data
     nifti_data = np.abs(nifti_data)
 
-    return nifti_data
+    return nifti_data, new_voxel_spacing
 
 
-def preprocess_file(nifti_path, nifti_file_name, output_path):
-    # Load the nifti file
-    nifti_data = load_nifti_file(nifti_path)
+def preprocess_file(nifti_path, nifti_filename, output_path, subsample_rate, threshold):
+    with tqdm(total=5, desc="Preprocessing {}".format(nifti_filename), leave=False) as pbar:
 
-    # Normalize the volume
-    nifti_data = normalize_volume(nifti_data)
+        # Load the nifti file
+        nifti_data, new_voxel_spacing = load_nifti_file_and_get_new_voxel_spacing(
+            nifti_path, subsample_rate)
 
-    # Subsample the volume data
-    subsampledVolumeDataX = subsample_volume(nifti_data, 2)
-    subsampledVolumeDataY = subsample_volume(nifti_data, 2)
-    subsampledVolumeDataZ = subsample_volume(nifti_data, 2)
+        pbar.update(1)
 
-    # Save the subsampled volume data
-    save_stack_in_directory(subsampledVolumeDataX, 0,
-                            nifti_file_name, output_path)
-    save_stack_in_directory(subsampledVolumeDataY, 1,
-                            nifti_file_name, output_path)
-    save_stack_in_directory(subsampledVolumeDataZ, 2,
-                            nifti_file_name, output_path)
+        # Normalize the volume
+        nifti_data = normalize_volume(nifti_data)
 
-    # Compute the brain mask of first orientation
-    brainMask = compute_brain_mask(subsampledVolumeDataX, 0.085)
+        pbar.update(1)
 
-    # Save the brain mask
-    save_stack_in_directory(
-        brainMask, 0, nifti_file_name + "_mask", output_path)
+        # Subsample the volume data
+        subsampled_volume_data_x = subsample_volume(nifti_data, subsample_rate)
+        subsampled_volume_data_y = subsample_volume(nifti_data, subsample_rate)
+        subsampled_volume_data_z = subsample_volume(nifti_data, subsample_rate)
+
+        pbar.update(1)
+
+        # Save the subsampled volume data
+        save_stack_in_directory(subsampled_volume_data_x, 0,
+                                nifti_filename, output_path, new_voxel_spacing)
+        save_stack_in_directory(subsampled_volume_data_y, 1,
+                                nifti_filename, output_path, new_voxel_spacing)
+        save_stack_in_directory(subsampled_volume_data_z, 2,
+                                nifti_filename, output_path, new_voxel_spacing)
+
+        pbar.update(1)
+
+        # Compute the brain mask of first orientation
+        brainMask = compute_brain_mask(subsampled_volume_data_x, threshold)
+
+        pbar.update(1)
+
+        # Save the brain mask
+        save_stack_in_directory(
+            brainMask, 0, nifti_filename + "_mask", output_path, new_voxel_spacing)
 
 
-def main():
-    # Get the path to the directory containing the nifti files
-    path = sys.argv[1]
-    output_path = sys.argv[2]
-
-    # Get parameter which defines if all or one file should be processed
-    process_all_files = False
-    if len(sys.argv) > 3:
-        process_all_files = True
-
-    if process_all_files:
+def main(args):
+    if args.process_all_files:
         # Loop over files in directory
-        for file_name in os.listdir(path):
+        for filename in tqdm(os.listdir(args.data_path), desc="Processing all files"):
 
             # Ignore if file is ds_store
-            if file_name == ".DS_Store":
+            if filename == ".DS_Store":
                 continue
 
             # Get nifti filepath
-            nifti_file_path = os.path.join(path, file_name)
+            nifti_file_path = os.path.join(args.data_path, filename)
 
             # Preprocess the file
-            preprocess_file(nifti_file_path, file_name, output_path)
+            preprocess_file(nifti_file_path, filename,
+                            args.output_path, args.subsample_factor, args.threshold)
     else:
         # Get first nifti file in directory
-        nifti_file_path = get_first_nifti_file_in_dir(path)
+        filename = get_first_nifti_file_in_dir(args.data_path)
+        nifti_file_path = os.path.join(args.data_path, filename)
 
         # Preprocess the file
-        preprocess_file(nifti_file_path, output_path, output_path)
+        preprocess_file(nifti_file_path, filename,
+                        args.output_path, args.subsample_factor, args.threshold)
+
+    tqdm.write("Processing complete.")
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    # Create argument parser object
+    parser = argparse.ArgumentParser(
+        description="Subsample high resolution NIfTI image to lower resolution stacks and create brain mask")
+
+    # Add arguments
+    parser.add_argument('-d', '--data_path', type=str, required=True,
+                        help='Path to directory containing high-resolution NIfTI images')
+    parser.add_argument('-o', '--output_path', type=str, required=True,
+                        help='Path to directory where subsampled NIfTI images will be saved')
+    parser.add_argument('-s', '--subsample_factor', type=float, default=2,
+                        help='Factor at which to subsample the images (e.g. 2 for 50%% subsampling)')
+    parser.add_argument('-t', '--threshold', type=float, default=0.085,
+                        help='Threshold value for segmentation and mask creation. If not provided, the threshold will be calculated using the Otsu method. Default: 0.085')
+    parser.add_argument('-a', '--process_all_files', action='store_true',
+                        help='If provided, all files in the data directory will be processed. Otherwise, only one file will be processed.')
+
+    # Parse the arguments
+    args = parser.parse_args()
+
+    # Set default value for threshold if not provided
+    if args.threshold is None:
+        args.threshold = 0.085
+
+    # Print the arguments
+    print("Subsampling data...")
+    print('Data path:', args.data_path)
+    print('Output path:', args.output_path)
+    print('Subsample factor:', args.subsample_factor)
+    print('Threshold:', args.threshold)
+    print('Process all files:', args.process_all_files)
+    main(args)
