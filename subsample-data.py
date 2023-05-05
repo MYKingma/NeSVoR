@@ -161,14 +161,22 @@ def compute_brain_mask(volume, threshold=None, min_size=1000):
         threshold = threshold_otsu(volume)
 
     # Apply threshold to the volume
-    mask = np.zeros_like(volume)
+    mask = np.zeros_like(volume, dtype=np.int64)
     mask[volume > threshold] = 1
 
-    # Fill any holes inside the brain
-    mask = binary_fill_holes(mask)
+    # Fill any holes inside the brain in all dimensions
+    for i in range(mask.shape[2]):
+        mask[:, :, i] = binary_fill_holes(mask[:, :, i])
+    for i in range(mask.shape[1]):
+        mask[:, i, :] = binary_fill_holes(mask[:, i, :])
+    for i in range(mask.shape[0]):
+        mask[i, :, :] = binary_fill_holes(mask[i, :, :])
 
     # Remove any small disconnected regions
     mask = remove_small_objects(mask, min_size=min_size)
+
+    mask = np.where(mask == True, 1.0, 0.0)
+
 
     return mask
 
@@ -188,26 +196,49 @@ def main():
     # Get the data from the nifti file
     niftiData = nifti.get_fdata()
 
+    # Get absolute value of data
+    niftiData = np.abs(niftiData)
+
+    # Normalize values in volume between 0 and 1
+    niftiData = niftiData / np.max(np.abs(niftiData))
+    
+    # # Plot histogram of values in volume
+    # plt.hist(niftiData.flatten(), bins=100)
+    # plt.show()
+
+    # # Plot histogram of values in volume
+    # plt.hist(niftiData.flatten(), bins=100)
+    # plt.show()
+
     # # Subsample the volume data
     # subsampledVolumeDataX = subsampleVolumeForSliceDimension(niftiData, 0, 2)
     # subsampledVolumeDataY = subsampleVolumeForSliceDimension(niftiData, 1, 2)
     # subsampledVolumeDataZ = subsampleVolumeForSliceDimension(niftiData, 2, 2)
 
-    # Subsample the volume data
+    # # Subsample the volume data
     subsampledVolumeDataX = subsample_volume(niftiData, 2)
     subsampledVolumeDataY = subsample_volume(niftiData, 2)
     subsampledVolumeDataZ = subsample_volume(niftiData, 2)
 
-    # Save the subsampled volume data
+    # # Save the subsampled volume data
     saveStackInDirectory(subsampledVolumeDataX, 0, niftiFile, outputPath)
     saveStackInDirectory(subsampledVolumeDataY, 1, niftiFile, outputPath)
     saveStackInDirectory(subsampledVolumeDataZ, 2, niftiFile, outputPath)
 
     # Compute the brain mask of first orientation
-    brainMask = compute_brain_mask(subsampledVolumeDataX)
+    brainMask = compute_brain_mask(subsampledVolumeDataX, 0.1)
 
-    # Save the brain mask
-    saveStackInDirectory(brainMask, 0, niftiFile + "_mask", outputPath)
+    # brainMask = np.where(subsampledVolumeDataX > 0, subsampledVolumeDataX, 0.0)
+    # brainMask = np.where(brainMask > 0, 1, 0)
+
+    # # plot mask and volume side by side
+    # fig, axes = plt.subplots(1, 2)
+    # axes[0].imshow(subsampledVolumeDataX[15, :, :], cmap="gray")
+    # axes[1].imshow(brainMask[15, :, :], cmap="gray")
+    # plt.show()
+
+    # # Save the brain mask
+    # saveStackInDirectory(brainMask, 0, niftiFile + "_mask", outputPath)
 
 
 if __name__ == "__main__":
