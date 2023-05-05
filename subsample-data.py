@@ -93,6 +93,10 @@ def subsample_volume(volume, subsample_rate):
     downsampled_volume = block_reduce(
         volume, block_size=(factor, factor, factor), func=np.mean)
 
+    # Normalize the volume to be between 0 and 1
+    downsampled_volume = downsampled_volume - np.min(downsampled_volume)
+    downsampled_volume = downsampled_volume / np.max(downsampled_volume)
+
     # Return the downsampled volume
     return downsampled_volume
 
@@ -173,7 +177,7 @@ def load_nifti_file_and_get_new_voxel_spacing(niftiPath, subsample_rate):
     return nifti_data, new_voxel_spacing
 
 
-def preprocess_file(nifti_path, nifti_filename, output_path, subsample_rate, threshold):
+def preprocess_file(nifti_path, nifti_filename, output_path, subsample_rate, threshold, debug=False):
     with tqdm(total=5, desc="Preprocessing {}".format(nifti_filename), leave=False) as pbar:
 
         # Load the nifti file
@@ -207,6 +211,10 @@ def preprocess_file(nifti_path, nifti_filename, output_path, subsample_rate, thr
         # Compute the brain mask of first orientation
         brainMask = compute_brain_mask(subsampled_volume_data_x, threshold)
 
+        if debug:
+            plot_volume(subsampled_volume_data_x)
+            plot_volume(brainMask)
+
         pbar.update(1)
 
         # Save the brain mask
@@ -236,7 +244,7 @@ def main(args):
 
         # Preprocess the file
         preprocess_file(nifti_file_path, filename,
-                        args.output_path, args.subsample_factor, args.threshold)
+                        args.output_path, args.subsample_factor, args.threshold, args.debug)
 
     tqdm.write("Processing complete.")
 
@@ -255,17 +263,15 @@ if __name__ == "__main__":
                         help='Path to directory where subsampled NIfTI images will be saved')
     parser.add_argument('-s', '--subsample_factor', type=float, default=2,
                         help='Factor at which to subsample the images (e.g. 2 for 50%% subsampling)')
-    parser.add_argument('-t', '--threshold', type=float, default=0.085,
+    parser.add_argument('-t', '--threshold', type=float, default=0.1,
                         help='Threshold value for segmentation and mask creation. If not provided, the threshold will be calculated using the Otsu method. Default: 0.085')
     parser.add_argument('-a', '--process_all_files', action='store_true',
                         help='If provided, all files in the data directory will be processed. Otherwise, only one file will be processed.')
+    parser.add_argument("-db", "--debug", action="store_true",
+                        help="Enable debug mode, only for single file processing (plots subsampled volume and mask)")
 
     # Parse the arguments
     args = parser.parse_args()
-
-    # Set default value for threshold if not provided
-    if args.threshold is None:
-        args.threshold = 0.085
 
     # Print the arguments
     print("Subsampling data...")
