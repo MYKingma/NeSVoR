@@ -161,6 +161,9 @@ def load_nifti_file_and_get_new_voxel_spacing(niftiPath, subsample_rate):
     new_voxel_spacing = (voxel_spacing[0] * subsample_rate,
                          voxel_spacing[1] * subsample_rate, voxel_spacing[2] * subsample_rate)
 
+    # Round the new voxel spacing to 1 decimal place
+    new_voxel_spacing = tuple(round(x, 1) for x in new_voxel_spacing)
+
     # Get the data from the nifti file
     nifti_data = nifti.get_fdata()
 
