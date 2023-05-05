@@ -194,9 +194,9 @@ def main():
     output_path = sys.argv[2]
 
     # Get parameter which defines if all or one file should be processed
-    process_all_files = True
+    process_all_files = False
     if len(sys.argv) > 3:
-        process_all_files = False
+        process_all_files = True
 
     if process_all_files:
         # Loop over files in directory
