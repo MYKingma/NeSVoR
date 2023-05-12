@@ -242,7 +242,7 @@ def preprocess_file(nifti_path, nifti_filename, threshold, output_path, debug=Fa
             brain_mask, mask_filename, output_path)
 
 
-def convert_hdf_file_to_nifti(hdf_file_path, output_path, debug=False, normalize_per_slice=False):
+def convert_hdf_file_to_nifti(hdf_file_path, output_path, debug=False, normalize_per_slice=False, resolution=None):
     # Open the hdf file
     hdf_data = h5py.File(hdf_file_path, "r")["reconstruction"][
         ()
@@ -273,6 +273,10 @@ def convert_hdf_file_to_nifti(hdf_file_path, output_path, debug=False, normalize
     # Create nifti file with new voxel spacing
     niftii_data = nib.Nifti1Image(np.abs(hdf_data), np.eye(4))
 
+    # Set the new voxel spacing if provided
+    if resolution is not None:
+        niftii_data.header.set_zooms(resolution)
+
     # Save the nifti file
     nib.save(niftii_data, output_path)
 
@@ -285,7 +289,7 @@ def is_hdf_file(file_path):
         return False
 
 
-def convert_all_hdf_files_in_dir_to_nifti(dir, debug=False, normalize_per_slice=False):
+def convert_all_hdf_files_in_dir_to_nifti(dir, debug=False, normalize_per_slice=False, resolution=None):
     # Loop over all hdf files in the directory
     for file in os.listdir(dir):
         file_path = os.path.join(dir, file)
@@ -295,7 +299,7 @@ def convert_all_hdf_files_in_dir_to_nifti(dir, debug=False, normalize_per_slice=
 
             # Convert the hdf file to nifti
             convert_hdf_file_to_nifti(
-                file_path, nifti_file_path, debug, normalize_per_slice)
+                file_path, nifti_file_path, debug, normalize_per_slice, resolution)
 
 
 def move_all_nifti_files_to_child_directory_named_input(dir):
@@ -367,7 +371,7 @@ def main(args):
 
         # Convert hdf files to nifti
         convert_all_hdf_files_in_dir_to_nifti(
-            subdirectory_path, args.debug, args.normalize_per_slice)
+            subdirectory_path, args.debug, args.normalize_per_slice, args.resolution)
 
         # Get first nifti file in subdirectory
         nifti_filename = get_first_nifti_file_in_dir(subdirectory_path)
@@ -393,7 +397,7 @@ if __name__ == "__main__":
 
     # Create argument parser object
     parser = argparse.ArgumentParser(
-        description="Downsample high resolution NIfTI image to lower resolution stacks and create brain mask")
+        description="Prepare data for SVR toolbox")
 
     # Add arguments
     parser.add_argument("-d", "--data_path", type=str, required=True,
@@ -402,6 +406,8 @@ if __name__ == "__main__":
                         help="Threshold value for segmentation and mask creation. If not provided, the threshold will be calculated using the Otsu method. Default: 0.085")
     parser.add_argument("-a", "--process_all_files", action="store_true",
                         help="If provided, all files in the data directory will be processed. Otherwise, only one file will be processed.")
+    parser.add_argument("-r", "--resolution", type=tuple, default=(1, 1, 1),
+                        help="Resolution of the input data. Default: (1, 1, 1)")
     parser.add_argument("-db", "--debug", action="store_true",
                         help="Enable debug mode, only for single file processing (plots volume and mask)")
     parser.add_argument("-nps", "--normalize-per-slice", action="store_true",
