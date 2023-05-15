@@ -66,7 +66,7 @@ def get_first_nifti_file_in_dir(path):
 
 
 def downsample_slice_data(slice_data, downsample_rate):
-    # downsample the slice data
+    # Downsample the slice data
     downsampled_slice_data = slice_data[::downsample_rate, ::downsample_rate]
     return downsampled_slice_data
 
