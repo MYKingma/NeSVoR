@@ -101,32 +101,16 @@ def get_slice_from_dimension(volume_data, dimension, slice_number):
     return slice_data
 
 
-def downsample_volume(volume, downsample_rate):
-    # Define the downsampling factor based on the downsample rate
-    factor = int(downsample_rate)
-
-    # Apply the block_reduce function with a mean function to the volume
-    downsampled_volume = block_reduce(
-        volume, block_size=(factor, factor, factor), func=np.mean)
-
-    # Normalize the volume to be between 0 and 1
-    downsampled_volume = downsampled_volume - np.min(downsampled_volume)
-    downsampled_volume = downsampled_volume / np.max(downsampled_volume)
-
-    # Return the downsampled volume
-    return downsampled_volume
-
-
-def save_stack_in_directory(volume_data, niftii_filename, output_path, new_voxel_spacing=None):
+def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_spacing=None):
     # Create nifti file with new voxel spacing
-    niftii_data = nib.Nifti1Image(volume_data, np.eye(4))
+    nifti_data = nib.Nifti1Image(volume_data, np.eye(4))
 
     # Set the new voxel spacing if provided
     if new_voxel_spacing is not None:
-        niftii_data.header.set_zooms(new_voxel_spacing)
+        nifti_data.header.set_zooms(new_voxel_spacing)
 
     # Save the nifti file
-    nib.save(niftii_data, os.path.join(output_path, niftii_filename))
+    nib.save(nifti_data, os.path.join(output_path, nifti_filename))
 
 
 def compute_brain_mask(volume, threshold=None, min_size=100):
@@ -156,10 +140,40 @@ def compute_brain_mask(volume, threshold=None, min_size=100):
     return mask
 
 
-def normalize_volume(volume):
-    # Normalize the volume to be between 0 and 1
-    volume = volume - np.min(volume)
-    volume = volume / np.max(volume)
+def set_slice_in_dimension(volume, dimension, slice_number, slice_data):
+    # Set the slice in the volume data
+    if dimension == 0:
+        volume[slice_number, :, :] = slice_data
+    elif dimension == 1:
+        volume[:, slice_number, :] = slice_data
+    elif dimension == 2:
+        volume[:, :, slice_number] = slice_data
+    else:
+        print("Invalid dimension")
+        return
+    return volume
+
+
+def normalize_volume(volume, normalize_per_slice=False):
+    if normalize_per_slice:
+        # Loop over slice dimension (dimension with lowest length)
+        for i in range(volume.shape[np.argmin(volume.shape)]):
+            # Get the slice data
+            slice_data = get_slice_from_dimension(volume, np.argmin(
+                volume.shape), i)
+
+            # Normalize the slice data to be between 0 and 1
+            slice_data = slice_data - np.min(slice_data)
+            slice_data = slice_data / np.max(slice_data)
+
+            # Set the slice data in the volume
+            volume = set_slice_in_dimension(
+                volume, np.argmin(volume.shape), i, slice_data)
+
+    else:
+        # Normalize the volume to be between 0 and 1
+        volume = volume - np.min(volume)
+        volume = volume / np.max(volume)
 
     return volume
 
@@ -205,25 +219,74 @@ def plot_abs_angle_real_imag_from_complex_volume(volume):
         plt.show()
 
 
-def preprocess_file(nifti_path, nifti_filename, threshold, output_path, debug=False):
-    with tqdm(total=3, desc="Preprocessing {}".format(nifti_filename), leave=False) as pbar:
+def downsample_volume(volume, downsample_rate, ignore_slice_dimension=False, slice_thickness=None, debug=False):
+    if debug:
+        print("Original volume shape:", volume.shape)
 
-        # Load the nifti file
-        nifti_data = load_nifti_file(
-            nifti_path)
+    # Define the downsampling factor based on the downsample rate
+    factor = int(downsample_rate)
 
-        pbar.update(1)
+    # Identify the slice dimension
+    slice_dimension = np.argmin(volume.shape)
+
+    # Create block size with factors for each dimension
+    block_size = [factor, factor, factor]
+
+    if ignore_slice_dimension:
+        # Set the block size for the slice dimension to 1
+        block_size[slice_dimension] = 1
+
+    else:
+        if slice_thickness is not None:
+            # Set the block size for the slice dimension to the slice thickness
+            block_size[slice_dimension] = int(slice_thickness)
+
+    # Apply the block_reduce function with a mean function to the volume
+    downsampled_volume = block_reduce(
+        volume, block_size=tuple(block_size), func=np.mean)
+
+    # Calculate the new voxel spacing
+    new_voxel_spacing = np.array(volume.shape) / np.array(block_size)
+
+    if debug:
+        print("Downsampled volume shape:", downsampled_volume.shape)
+        print("New voxel spacing:", new_voxel_spacing)
+
+    return downsampled_volume, new_voxel_spacing
+
+
+def preprocess_file(nifti_path, nifti_filename, threshold, output_path, normalize_per_slice=False, donwsample_file=False, downsample_rate=None, ignore_slice_dimension=None, slice_thickness=None, create_mask=False, debug=False):
+    # with tqdm(total=3, desc="Preprocessing {}".format(nifti_filename), leave=False) as pbar:
+
+    # Load the nifti file
+    nifti_data = load_nifti_file(
+        nifti_path)
+
+    # pbar.update(1)
+
+    # Normalize the volume
+    nifti_data = normalize_volume(nifti_data, normalize_per_slice)
+
+    if debug:
+        print("Volume shape:", nifti_data.shape)
+        print("Volume min:", np.min(nifti_data))
+        print("Volume max:", np.max(nifti_data))
+
+    if donwsample_file:
+        # Downsample the volume
+        nifti_data, new_voxel_spacing = downsample_volume(
+            nifti_data, downsample_rate, ignore_slice_dimension, slice_thickness, debug)
 
         # Normalize the volume
-        # nifti_data = normalize_volume(nifti_data)
+        nifti_data = normalize_volume(nifti_data, normalize_per_slice)
 
-        if debug:
-            print("Volume shape:", nifti_data.shape)
-            print("Volume min:", np.min(nifti_data))
-            print("Volume max:", np.max(nifti_data))
+        # Save the downsampled volume
+        save_stack_in_directory(
+            nifti_data, nifti_filename, output_path, new_voxel_spacing)
 
-        pbar.update(1)
+    # pbar.update(1)
 
+    if create_mask:
         # Compute the brain mask of first orientation
         brain_mask = compute_brain_mask(nifti_data, threshold)
 
@@ -231,7 +294,7 @@ def preprocess_file(nifti_path, nifti_filename, threshold, output_path, debug=Fa
             plot_volume(nifti_data)
             plot_volume(brain_mask)
 
-        pbar.update(1)
+        # pbar.update(1)
 
         # Create filename for mask (add _mask before extension)
         mask_filename = nifti_filename.split(".")[0]
@@ -242,7 +305,7 @@ def preprocess_file(nifti_path, nifti_filename, threshold, output_path, debug=Fa
             brain_mask, mask_filename, output_path)
 
 
-def convert_hdf_file_to_nifti(hdf_file_path, output_path, debug=False, normalize_per_slice=False, resolution=None):
+def convert_hdf_file_to_nifti(hdf_file_path, output_path, debug=False, resolution=None):
     # Open the hdf file
     hdf_data = h5py.File(hdf_file_path, "r")["reconstruction"][
         ()
@@ -251,16 +314,6 @@ def convert_hdf_file_to_nifti(hdf_file_path, output_path, debug=False, normalize
     # Move dimension with lowest length to the back
     dimension_lowest_length = np.argmin(hdf_data.shape)
     hdf_data = np.moveaxis(hdf_data, dimension_lowest_length, -1)
-
-    if normalize_per_slice:
-        # Normalize the volume per slice
-        for i in range(hdf_data.shape[2]):
-            hdf_data[:, :, i] = hdf_data[:, :, i] / \
-                np.max(np.abs(hdf_data[:, :, i]))
-
-    else:
-        # Normalize the volume to be between 0 and 1
-        hdf_data = hdf_data / np.max(np.abs(hdf_data))
 
     if debug:
         # Plot volume
@@ -271,14 +324,14 @@ def convert_hdf_file_to_nifti(hdf_file_path, output_path, debug=False, normalize
         plot_abs_angle_real_imag_from_complex_volume(hdf_data)
 
     # Create nifti file with new voxel spacing
-    niftii_data = nib.Nifti1Image(np.abs(hdf_data), np.eye(4))
+    nifti_data = nib.Nifti1Image(np.abs(hdf_data), np.eye(4))
 
     # Set the new voxel spacing if provided
     if resolution is not None:
-        niftii_data.header.set_zooms(resolution)
+        nifti_data.header.set_zooms(resolution)
 
     # Save the nifti file
-    nib.save(niftii_data, output_path)
+    nib.save(nifti_data, output_path)
 
 
 def is_hdf_file(file_path):
@@ -289,7 +342,7 @@ def is_hdf_file(file_path):
         return False
 
 
-def convert_all_hdf_files_in_dir_to_nifti(dir, debug=False, normalize_per_slice=False, resolution=None):
+def convert_all_hdf_files_in_dir_to_nifti(dir, debug=False, resolution=None):
     # Loop over all hdf files in the directory
     for file in os.listdir(dir):
         file_path = os.path.join(dir, file)
@@ -299,7 +352,7 @@ def convert_all_hdf_files_in_dir_to_nifti(dir, debug=False, normalize_per_slice=
 
             # Convert the hdf file to nifti
             convert_hdf_file_to_nifti(
-                file_path, nifti_file_path, debug, normalize_per_slice, resolution)
+                file_path, nifti_file_path, debug, resolution)
 
 
 def move_all_nifti_files_to_child_directory_named_input(dir):
@@ -335,7 +388,8 @@ def move_all_hdf_files_to_child_directory_named_HDF(dir):
 def main(args):
     if args.process_all_files:
         # Loop over all subdirectories in the data path
-        for subdirectory_name in tqdm(os.listdir(args.data_path), desc="Processing all files"):
+        # for subdirectory_name in tqdm(os.listdir(args.data_path), desc="Processing all files"):
+        for subdirectory_name in os.listdir(args.data_path):
 
             # Ignore if file is ds_store
             if subdirectory_name == ".DS_Store":
@@ -347,7 +401,7 @@ def main(args):
 
             # Convert hdf files to nifti
             convert_all_hdf_files_in_dir_to_nifti(
-                subdirectory_path)
+                subdirectory_path, args.debug, args.resolution)
 
             # Get first nifti file in subdirectory
             nifti_filename = get_first_nifti_file_in_dir(
@@ -356,11 +410,31 @@ def main(args):
                 subdirectory_path, nifti_filename)
 
             # Preprocess the file
-            preprocess_file(nifti_file_path, subdirectory_name, args.threshold)
+            preprocess_file(nifti_file_path,
+                            nifti_filename, args.threshold, subdirectory_path, args.normalize_per_slice, args.downsample, args.downsample_rate, args.ignore_slice_dimension, args.slice_thickness, create_mask=True, debug=args.debug)
+
+            # Get all other nifti files in the subdirectory
+            nifti_files = [f for f in os.listdir(subdirectory_path) if f.endswith(
+                ".nii.gz") and f != nifti_filename]
+
+            print("nifti_files", nifti_files)
+
+            # Preprocess other nifti files
+            for nifti_filename in nifti_files:
+                # Get the nifti file path
+                nifti_file_path = os.path.join(
+                    subdirectory_path, nifti_filename)
+
+                # Preprocess the file
+                preprocess_file(nifti_file_path, nifti_filename,
+                                args.threshold, subdirectory_path, args.normalize_per_slice, args.downsample, args.downsample_rate, args.ignore_slice_dimension, args.slice_thickness, create_mask=False, debug=args.debug)
 
             # Move all nifti files to child directory named input
             move_all_nifti_files_to_child_directory_named_input(
                 subdirectory_path)
+
+            # Move all hdf files to child directory named HDF
+            move_all_hdf_files_to_child_directory_named_HDF(subdirectory_path)
     else:
         # Get first subdirectoy path in data path
         subdirectory_name = os.listdir(args.data_path)[0] if os.listdir(args.data_path)[
@@ -381,7 +455,20 @@ def main(args):
 
         # Preprocess the file
         preprocess_file(nifti_file_path, nifti_filename,
-                        args.threshold, subdirectory_path, args.debug)
+                        args.threshold, subdirectory_path, args.normalize_per_slice, args.downsample, args.downsample_rate, args.ignore_slice_dimension, args.slice_thickness, create_mask=True, debug=args.debug)
+
+        # Get all other nifti files in the subdirectory
+        nifti_files = [f for f in os.listdir(subdirectory_path) if f.endswith(
+            ".nii.gz") and f != nifti_filename]
+
+        # Preprocess other nifti files
+        for nifti_filename in nifti_files:
+            # Get the nifti file path
+            nifti_file_path = os.path.join(subdirectory_path, nifti_filename)
+
+            # Preprocess the file
+            preprocess_file(nifti_file_path, nifti_filename,
+                            args.threshold, subdirectory_path, args.normalize_per_slice, args.downsample, args.downsample_rate, args.ignore_slice_dimension, args.slice_thickness, create_mask=False, debug=args.debug)
 
         # Move all nifti files to child directory named input
         move_all_nifti_files_to_child_directory_named_input(subdirectory_path)
@@ -389,7 +476,7 @@ def main(args):
         # Move all hdf files to child directory named HDF
         move_all_hdf_files_to_child_directory_named_HDF(subdirectory_path)
 
-    tqdm.write("Processing complete.")
+    # tqdm.write("Processing complete.")
 
 
 if __name__ == "__main__":
@@ -400,14 +487,22 @@ if __name__ == "__main__":
         description="Prepare data for SVR toolbox")
 
     # Add arguments
-    parser.add_argument("-d", "--data_path", type=str, required=True,
+    parser.add_argument("-d", "--data-path", type=str, required=True,
                         help="Path to directory containing high-resolution NIfTI images")
     parser.add_argument("-t", "--threshold", type=float, default=0.1,
                         help="Threshold value for segmentation and mask creation. If not provided, the threshold will be calculated using the Otsu method. Default: 0.085")
-    parser.add_argument("-a", "--process_all_files", action="store_true",
+    parser.add_argument("-a", "--process-all-files", action="store_true",
                         help="If provided, all files in the data directory will be processed. Otherwise, only one file will be processed.")
-    parser.add_argument("-r", "--resolution", type=tuple, default=(1, 1, 1),
-                        help="Resolution of the input data. Default: (1, 1, 1)")
+    parser.add_argument("-r", "--resolution", type=tuple,
+                        help="Resolution of the input data. If not provided, the resolution will be taken from the nifti file.")
+    parser.add_argument("-ds", "--downsample", action="store_true",
+                        default=False, help="If provided, the input data will be downsampled.")
+    parser.add_argument("-dsr", "--downsample-rate", type=int,
+                        default=2, help="Downsample rate. Default: 2")
+    parser.add_argument("-isd", "--ignore-slice-dimension", action="store_true",
+                        default=False, help="If provided, the slice dimension will be ignored when downsampling.")
+    parser.add_argument("-st", "--slice-thickness", type=int,
+                        default=1, help="Slice thickness used for downsampling. Default: 1")
     parser.add_argument("-db", "--debug", action="store_true",
                         help="Enable debug mode, only for single file processing (plots volume and mask)")
     parser.add_argument("-nps", "--normalize-per-slice", action="store_true",
@@ -417,8 +512,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Print the arguments
-    print("Subsampling data...")
-    print("Data path:", args.data_path)
-    print("Threshold:", args.threshold)
-    print("Process all files:", args.process_all_files)
+    print("Running SVR preparation with the following arguments:")
+    for arg in vars(args):
+        print(f"{arg}:", getattr(args, arg))
     main(args)
