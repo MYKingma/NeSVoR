@@ -343,6 +343,9 @@ def preprocess_file(nifti_path, nifti_filename, threshold, output_path, normaliz
         else:
             mask_voxel_spacing = nifti_voxel_spacing
 
+        if debug:
+            print("Mask voxel spacing:", mask_voxel_spacing)
+
         # Save the mask
         save_stack_in_directory(
             brain_mask, mask_filename, output_path, mask_voxel_spacing)
@@ -463,7 +466,7 @@ def main(args):
 
             # Get all other nifti files in the subdirectory
             nifti_files = [f for f in os.listdir(subdirectory_path) if f.endswith(
-                ".nii.gz") and f != nifti_filename]
+                ".nii.gz") and f != nifti_filename and "mask" not in f]
 
             # Preprocess other nifti files
             for nifti_filename in nifti_files:
@@ -498,7 +501,7 @@ def main(args):
 
         # Get all other nifti files in the subdirectory
         nifti_files = [f for f in os.listdir(args.data_path) if f.endswith(
-            ".nii.gz") and f != nifti_filename]
+            ".nii.gz") and f != nifti_filename and "mask" not in f]
 
         # Preprocess other nifti files
         for nifti_filename in nifti_files:
