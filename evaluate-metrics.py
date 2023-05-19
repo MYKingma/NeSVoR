@@ -5,8 +5,8 @@ import h5py
 import numpy as np
 from runstats import Statistics
 
-from mridc.collections.common.parts import center_crop, utils
-from mridc.collections.reconstruction.metrics.reconstruction_metrics import mse, nmse, psnr, ssim
+from mridc.collections.common.parts import utils
+from mridc.collections.common.metrics.reconstruction_metrics import mse, nmse, psnr, ssim
 
 METRIC_FUNCS = {"MSE": mse, "NMSE": nmse, "PSNR": psnr, "SSIM": ssim}
 
@@ -99,8 +99,8 @@ def main(args):
         # crop_size[0] = reconstruction.shape[-2] if reconstruction.shape[-2] < int(crop_size[0]) else int(crop_size[0])
         # crop_size[1] = reconstruction.shape[-1] if reconstruction.shape[-1] < int(crop_size[1]) else int(crop_size[1])
         #
-        # target = center_crop(target, crop_size)
-        # reconstruction = center_crop(reconstruction, crop_size)
+        # target = utils.center_crop(target, crop_size)
+        # reconstruction = utils.center_crop(reconstruction, crop_size)
 
         # for sl in range(target.shape[0]):
         #     target[sl] = target[sl] / np.max(np.abs(target[sl]))
