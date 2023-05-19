@@ -329,6 +329,7 @@ def preprocess_file(nifti_path, nifti_filename, threshold, output_path, normaliz
         if debug:
             plot_volume(nifti_data)
             plot_volume(brain_mask)
+            print("Brain mask shape:", brain_mask.shape)
 
         # pbar.update(1)
 
@@ -336,9 +337,15 @@ def preprocess_file(nifti_path, nifti_filename, threshold, output_path, normaliz
         mask_filename = nifti_filename.split(".")[0]
         mask_filename = nifti_filename + "_mask.nii.gz"
 
+        # Get correct mask voxel spacing
+        if donwsample_file:
+            mask_voxel_spacing = new_voxel_spacing
+        else:
+            mask_voxel_spacing = nifti_voxel_spacing
+
         # Save the mask
         save_stack_in_directory(
-            brain_mask, mask_filename, output_path)
+            brain_mask, mask_filename, output_path, mask_voxel_spacing)
 
 
 def convert_hdf_file_to_nifti(hdf_file_path, output_path, debug=False, resolution=None):
