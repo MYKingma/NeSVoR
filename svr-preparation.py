@@ -96,6 +96,18 @@ def get_slice_from_dimension(volume_data, dimension, slice_number):
 
 
 def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_spacing=None):
+    # Check if there are two dimensions with the same size
+    if volume_data.shape[0] == volume_data.shape[1] or volume_data.shape[0] == volume_data.shape[2] or volume_data.shape[1] == volume_data.shape[2]:
+        print("Warning: volume has two dimensions with the same size, can be sagittal view")
+    else:
+        print("Volume data shape before permutation:", volume_data.shape)
+        # Permute the dimesions, smallest dimension to the back, biggest dimension to the middle, and the other dimension to the front
+        volume_data = np.moveaxis(volume_data, get_highest_length_dimension(
+            volume_data.shape), 1)
+        volume_data = np.moveaxis(volume_data, get_lowest_length_dimension(
+            volume_data.shape), 2)
+        print("Volume data shape after permutation:", volume_data.shape)
+
     # Create nifti file with new voxel spacing
     nifti_data = nib.Nifti1Image(volume_data, np.eye(4))
 
@@ -230,6 +242,23 @@ def get_lowest_length_dimension(shape):
     for i in range(1, len(shape)):
         # Check if the current dimension has a lower length
         if shape[i] < shape[selected_dimension]:
+            selected_dimension = i
+        # Check if the current dimension has the same length but comes after the selected dimension
+        elif shape[i] == shape[selected_dimension] and i > selected_dimension:
+            selected_dimension = i
+
+    # Return the dimension with the lowest length
+    return selected_dimension
+
+
+def get_highest_length_dimension(shape):
+    # Initialize the selected dimension as the first one
+    selected_dimension = 0
+
+    # Iterate through the dimensions
+    for i in range(1, len(shape)):
+        # Check if the current dimension has a lower length
+        if shape[i] > shape[selected_dimension]:
             selected_dimension = i
         # Check if the current dimension has the same length but comes after the selected dimension
         elif shape[i] == shape[selected_dimension] and i > selected_dimension:
