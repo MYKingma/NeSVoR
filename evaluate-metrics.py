@@ -74,23 +74,21 @@ class Metrics:
         return res
 
 
-def compute_brain_mask(volume, threshold=None, min_size=100):
+def compute_brain_mask(slice, threshold=None, min_size=100):
     # Compute threshold value using Otsu's algorithm if not provided
     if threshold is None:
-        threshold = threshold_otsu(volume)
+        threshold = threshold_otsu(slice)
         print("Calculated Otsu threshold:", threshold)
 
-    # Apply threshold to the volume
-    mask = np.zeros_like(volume, dtype=np.int64)
-    mask[volume > threshold] = 1
+    # Apply threshold to the slice
+    mask = np.zeros_like(slice, dtype=np.int64)
+    mask[slice > threshold] = 1
 
     # Fill any holes inside the brain in all dimensions
-    for i in range(mask.shape[2]):
-        mask[:, :, i] = binary_fill_holes(mask[:, :, i])
     for i in range(mask.shape[1]):
-        mask[:, i, :] = binary_fill_holes(mask[:, i, :])
+        mask[:, i] = binary_fill_holes(mask[:, i])
     for i in range(mask.shape[0]):
-        mask[i, :, :] = binary_fill_holes(mask[i, :, :])
+        mask[i, :] = binary_fill_holes(mask[i, :])
 
     # Remove any small disconnected regions
     mask = mask > 0
@@ -150,19 +148,19 @@ def plot_volume(volume_data):
 
 def main(args):
     # if json file
-    if args.targets_dir.endswith(".json"):
+    if args.targets_path.endswith(".json"):
         import json
 
-        with open(args.targets_dir, "r") as f:
+        with open(args.targets_path, "r") as f:
             targets = json.load(f)
         targets = [Path(target) for target in targets]
     else:
-        targets = list(Path(args.targets_dir).iterdir())
+        targets = list(Path(args.targets_path).iterdir())
 
     scores = Metrics(METRIC_FUNCS)
     ssims = []
     for target in targets:
-        reconstruction = h5py.File(Path(args.reconstructions_dir) / str(target).split("/")[-1], "r")["reconstruction"][
+        reconstruction = h5py.File(Path(args.reconstructions_path) / str(target).split("/")[-1], "r")["reconstruction"][
             ()
         ].squeeze()
         if "reconstruction_sense" in h5py.File(target, "r").keys():
@@ -175,31 +173,31 @@ def main(args):
         else:
             target = h5py.File(target, "r")["target"][()].squeeze()
 
-        if args.mask:
-            # Compute brain mask
-            mask = compute_brain_mask(target, threshold=args.threshold)
-
-            # Replace values outside the mask with NaN
-            target = np.where(mask == 0, np.nan, target)
-
         if args.eval_per_slice:
             for sl in range(target.shape[0]):
 
                 # Normalise slice
-                target[sl] = target[sl] / np.max(np.abs(target[sl]))
-                reconstruction[sl] = reconstruction[sl] / \
-                    np.max(np.abs(reconstruction[sl]))
+                target_slice = target[sl] / np.max(np.abs(target[sl]))
+                reconstruction_slice = reconstruction[sl] / np.max(np.abs(reconstruction[sl]))
 
                 # Take absolute value
-                target[sl] = np.abs(target[sl])
-                reconstruction[sl] = np.abs(reconstruction[sl])
+                target_slice = np.abs(target_slice)
+                reconstruction_slice = np.abs(reconstruction_slice)
 
                 # Clip values to [0, 1]
-                target[sl] = np.clip(target[sl], 0, 1)
-                reconstruction[sl] = np.clip(reconstruction[sl], 0, 1)
+                target_slice = np.clip(target_slice, 0, 1)
+                reconstruction_slice = np.clip(reconstruction_slice, 0, 1)
 
+                if args.mask:
+                    # Compute brain mask
+                    mask = compute_brain_mask(target_slice, threshold=args.threshold)
+
+                    # Replace values outside the mask with NaN
+                    target_slice = np.where(mask == 0, np.nan, target_slice)
+                    reconstruction_slice = np.where(mask == 0, np.nan, reconstruction_slice)
+                
                 # Calculate metrics
-                scores.push(target[sl], reconstruction[sl])
+                scores.push(target_slice, reconstruction_slice)
 
         else:
             # Normalise
@@ -213,6 +211,14 @@ def main(args):
             # Clip values to [0, 1]
             target = np.clip(target, 0, 1)
             reconstruction = np.clip(reconstruction, 0, 1)
+
+            if args.mask:
+                # Compute brain mask
+                mask = compute_brain_mask(target, threshold=args.threshold)
+
+                # Replace values outside the mask with NaN
+                target = np.where(mask == 0, np.nan, target)
+                reconstruction = np.where(mask == 0, np.nan, reconstruction)
 
             # Calculate metrics
             scores.push(target, reconstruction)
@@ -232,7 +238,7 @@ if __name__ == "__main__":
                         required=True, help="Path to reconstructions directory")
     parser.add_argument("-eps", "--eval-per-slice", action="store_true",
                         default=False, help="Evaluate metrics per slice")
-    parser.add_argument("-m", "--mask", type="store_true", default=False,
+    parser.add_argument("-m", "--mask", action="store_true", default=False,
                         help="Only calculate metrics for masked region")
     parser.add_argument("-t", "--threshold", type=float, default=0.1,
                         help="Threshold value for segmentation and mask creation. If not provided, the threshold will be calculated using the Otsu method. Default: 0.1")
