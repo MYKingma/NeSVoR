@@ -561,7 +561,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--data-path", type=str, required=True,
                         help="Path to directory containing high-resolution NIfTI images")
     parser.add_argument("-t", "--threshold", type=float, default=0.1,
-                        help="Threshold value for segmentation and mask creation. If not provided, the threshold will be calculated using the Otsu method. Default: 0.085")
+                        help="Threshold value for segmentation and mask creation. If not provided, the threshold will be calculated using the Otsu method. Default: 0.1")
     parser.add_argument("-a", "--process-all-files", action="store_true",
                         help="If provided, all files in the data directory will be processed. Otherwise, only one file will be processed.")
     parser.add_argument("-nps", "--normalize-per-slice", action="store_true",
