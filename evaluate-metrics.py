@@ -72,6 +72,21 @@ class Metrics:
             f"{name} = {means[name]:.4g} +/- {2 * stddevs[name]:.4g}" for name in metric_names) + "\n"
 
         return res
+    
+    def __csv__(self):
+        """
+        CSV representation of the metrics.
+        Returns:
+            str: A CSV string of the metrics.
+        """
+        means = self.means()
+        stddevs = self.stddevs()
+        metric_names = sorted(list(means))
+
+        res = ",".join(
+            f"{means[name]:.4g},{2 * stddevs[name]:.4g}" for name in metric_names) + "\n"
+
+        return res
 
 
 def compute_brain_mask(slice, threshold=None, min_size=100):
@@ -94,7 +109,6 @@ def compute_brain_mask(slice, threshold=None, min_size=100):
     mask = mask > 0
     # mask = remove_small_objects(label(mask), min_size=min_size)
     mask = remove_small_objects(mask, min_size=min_size)
-    mask = np.where(mask == True, 1.0, 0.0)
 
     return mask
 
@@ -193,8 +207,8 @@ def main(args):
                     mask = compute_brain_mask(target_slice, threshold=args.threshold)
 
                     # Replace values outside the mask with NaN
-                    target_slice = np.where(mask == 0, np.nan, target_slice)
-                    reconstruction_slice = np.where(mask == 0, np.nan, reconstruction_slice)
+                    target_slice = np.where(mask == False, 0, target_slice)
+                    reconstruction_slice = np.where(mask == False, 0, reconstruction_slice)
                 
                 # Calculate metrics
                 scores.push(target_slice, reconstruction_slice)
@@ -217,14 +231,15 @@ def main(args):
                 mask = compute_brain_mask(target, threshold=args.threshold)
 
                 # Replace values outside the mask with NaN
-                target = np.where(mask == 0, np.nan, target)
-                reconstruction = np.where(mask == 0, np.nan, reconstruction)
+                target = np.where(mask == False, 0, target)
+                reconstruction = np.where(mask == False, 0, reconstruction)
 
             # Calculate metrics
             scores.push(target, reconstruction)
 
     # Print the scores
     print(scores.__repr__()[:-1])
+    print(scores.__csv__())
 
 
 if __name__ == "__main__":
