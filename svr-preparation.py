@@ -75,9 +75,9 @@ def plot_slice_in_orientation_from_volume(volume_data, orientation, slice_number
 
 def get_first_nifti_file_in_dir(path):
     nifti_files = [f for f in os.listdir(
-        path) if f.endswith(".nii.gz") and "trans" in f]
+        path) if f.endswith(".nii.gz") and "trans" in f and "sag" not in f]
     if len(nifti_files) == 0:
-        nifti_files = [f for f in os.listdir(path) if f.endswith(".nii.gz")]
+        nifti_files = [f for f in os.listdir(path) if f.endswith(".nii.gz") and "sag" not in f]
     return nifti_files[0]
 
 
@@ -95,28 +95,63 @@ def get_slice_from_dimension(volume_data, dimension, slice_number):
     return slice_data
 
 
-def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_spacing=None):
-    # Check if there are two dimensions with the same size
-    if volume_data.shape[0] == volume_data.shape[1] or volume_data.shape[0] == volume_data.shape[2] or volume_data.shape[1] == volume_data.shape[2]:
-        print("Warning: volume has two dimensions with the same size, can be sagittal view")
-    else:
-        print("Volume data shape before permutation:", volume_data.shape)
-        # Permute the dimesions, smallest dimension to the back, biggest dimension to the middle, and the other dimension to the front
-        volume_data = np.moveaxis(volume_data, get_highest_length_dimension(
-            volume_data.shape), 1)
-        volume_data = np.moveaxis(volume_data, get_lowest_length_dimension(
-            volume_data.shape), 2)
-        print("Volume data shape after permutation:", volume_data.shape)
+def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_spacing=None, nifti_template=None, nifti_template_sagittal=None, debug=False):
+    if not nifti_template and not nifti_template_sagittal:
+        if debug:
+            print("Volume data shape before permutation:", volume_data.shape)
+
+        # Check if there are two dimensions with the same size
+        if volume_data.shape[0] == volume_data.shape[1] or volume_data.shape[0] == volume_data.shape[2] or volume_data.shape[1] == volume_data.shape[2]:
+            # Set orientation for sagittal view
+            volume_data = np.flip(volume_data, axis=(0, 1))
+            volume_data = np.transpose(volume_data, (0, 2, 1))
+
+        else:
+            # Set orientation for axial view
+            volume_data = np.flip(volume_data, axis=(1, 2))
+            volume_data = np.transpose(volume_data, (2, 1, 0))
+
+        if debug:
+            print("Volume data shape after permutation:", volume_data.shape)
 
     # Create nifti file with new voxel spacing
     nifti_data = nib.Nifti1Image(volume_data, np.eye(4))
 
     # Set the new voxel spacing if provided
     if new_voxel_spacing is not None:
+        # Get index of the dimension with the smallest size
+        min_dimension_index = np.argmin(volume_data.shape)
+
+        # Get the highest value voxel spacing value
+        max_voxel_value = np.max(new_voxel_spacing)
+
+        # Move the highest voxel spacing value to the index of the dimension with the smallest size
+        new_voxel_spacing = np.delete(new_voxel_spacing, 2)
+        new_voxel_spacing = np.insert(
+            new_voxel_spacing, min_dimension_index, max_voxel_value, axis=0)
+        
+        if debug:
+            print("New voxel spacing:", new_voxel_spacing)
+
+    if not nifti_template and not nifti_template_sagittal:
+        # Set the new voxel spacing
         nifti_data.header.set_zooms(new_voxel_spacing)
 
-    # Save the nifti file
-    nib.save(nifti_data, os.path.join(output_path, nifti_filename))
+        # Save the nifti file
+        nib.save(nifti_data, os.path.join(output_path, nifti_filename))
+    
+    else:
+        if "sag" in nifti_filename:
+            nifti_data = nib.load(nifti_template_sagittal)
+        else:
+            nifti_data = nib.load(nifti_template)
+
+        nifti_image = nifti_data.get_fdata()
+        nifti_image = volume_data
+        
+        new_nifti_data = nib.Nifti1Image(nifti_image, nifti_data.affine, nifti_data.header)
+
+        nib.save(new_nifti_data, os.path.join(output_path, nifti_filename))
 
 
 def compute_brain_mask(volume, threshold=None, min_size=100):
@@ -318,7 +353,7 @@ def downsample_volume(volume, downsample_rate, resolution, nifti_voxel_spacing, 
     return downsampled_volume, new_voxel_spacing
 
 
-def preprocess_file(nifti_path, nifti_filename, threshold, output_path, normalize_per_slice=False, donwsample_file=False, resolution=None, downsample_rate=None, ignore_slice_dimension=None, slice_thickness=None, create_mask=False, debug=False):
+def preprocess_file(nifti_path, nifti_filename, threshold, output_path, normalize_per_slice=False, donwsample_file=False, resolution=None, downsample_rate=None, ignore_slice_dimension=None, slice_thickness=None, nifti_template=None, nifti_template_sagittal=None, create_mask=False, debug=False):
     # with tqdm(total=3, desc="Preprocessing {}".format(nifti_filename), leave=False) as pbar:
 
     # Load the nifti file
@@ -345,9 +380,11 @@ def preprocess_file(nifti_path, nifti_filename, threshold, output_path, normaliz
         # Normalize the volume
         nifti_data = normalize_volume(nifti_data, normalize_per_slice)
 
-        # Save the downsampled volume
-        save_stack_in_directory(
-            nifti_data, nifti_filename, output_path, new_voxel_spacing)
+        nifti_voxel_spacing = new_voxel_spacing
+
+    # Save the downsampled volume
+    save_stack_in_directory(
+        nifti_data, nifti_filename, output_path, nifti_voxel_spacing, nifti_template, nifti_template_sagittal, debug)
 
     # pbar.update(1)
 
@@ -377,18 +414,15 @@ def preprocess_file(nifti_path, nifti_filename, threshold, output_path, normaliz
 
         # Save the mask
         save_stack_in_directory(
-            brain_mask, mask_filename, output_path, mask_voxel_spacing)
+            brain_mask, mask_filename, output_path, mask_voxel_spacing, nifti_template, nifti_template_sagittal, debug)
 
 
 def convert_hdf_file_to_nifti(hdf_file_path, output_path, debug=False, resolution=None):
+    # TODO: not convert to nifti first, but handle the volume data directly
     # Open the hdf file
     hdf_data = h5py.File(hdf_file_path, "r")["reconstruction"][
         ()
     ].squeeze()
-
-    # Move dimension with lowest length to the back
-    dimension_lowest_length = np.argmin(hdf_data.shape)
-    hdf_data = np.moveaxis(hdf_data, dimension_lowest_length, -1)
 
     if debug:
         # Plot volume
@@ -417,17 +451,18 @@ def is_hdf_file(file_path):
         return False
 
 
-def convert_all_hdf_files_in_dir_to_nifti(dir, debug=False, resolution=None):
+def convert_all_hdf_files_in_dir_to_nifti(dir, debug=False, resolution=None, resolution_sagittal=None):
     # Loop over all hdf files in the directory
     for file in os.listdir(dir):
         file_path = os.path.join(dir, file)
+        used_resolution = resolution_sagittal if "sag" in file_path else resolution
         if is_hdf_file(file_path):
             # Get the nifti file path
             nifti_file_path = os.path.join(file_path + ".nii.gz")
 
             # Convert the hdf file to nifti
             convert_hdf_file_to_nifti(
-                file_path, nifti_file_path, debug, resolution)
+                file_path, nifti_file_path, debug, used_resolution)
 
 
 def move_all_nifti_files_to_child_directory_named_input(dir):
@@ -481,7 +516,7 @@ def main(args):
 
             # Convert hdf files to nifti
             convert_all_hdf_files_in_dir_to_nifti(
-                subdirectory_path, args.debug, args.resolution)
+                subdirectory_path, args.debug, args.resolution, args.resolution_sagittal)
 
             # Get first nifti file in subdirectory
             nifti_filename = get_first_nifti_file_in_dir(
@@ -491,21 +526,24 @@ def main(args):
 
             # Preprocess the file
             preprocess_file(nifti_file_path,
-                            nifti_filename, args.threshold, subdirectory_path, args.normalize_per_slice, args.downsample, args.resolution, args.downsample_rate, args.ignore_slice_dimension, args.slice_thickness, create_mask=True, debug=args.debug)
+                            nifti_filename, args.threshold, subdirectory_path, args.normalize_per_slice, args.downsample, args.resolution, args.downsample_rate, args.ignore_slice_dimension, args.slice_thickness, args.nifti_template, args.nifti_template_sagittal, create_mask=args.mask, debug=args.debug)
 
             # Get all other nifti files in the subdirectory
             nifti_files = [f for f in os.listdir(subdirectory_path) if f.endswith(
                 ".nii.gz") and f != nifti_filename and "mask" not in f]
-
+            
             # Preprocess other nifti files
             for nifti_filename in nifti_files:
+                # Get used resolution
+                used_resolution = args.resolution_sagittal if "sag" in nifti_filename else args.resolution
+
                 # Get the nifti file path
                 nifti_file_path = os.path.join(
                     subdirectory_path, nifti_filename)
 
                 # Preprocess the file
                 preprocess_file(nifti_file_path, nifti_filename,
-                                args.threshold, subdirectory_path, args.normalize_per_slice, args.downsample, args.resolution, args.downsample_rate, args.ignore_slice_dimension, args.slice_thickness, create_mask=False, debug=args.debug)
+                                args.threshold, subdirectory_path, args.normalize_per_slice, args.downsample, used_resolution, args.downsample_rate, args.ignore_slice_dimension, args.slice_thickness, args.nifti_template, args.nifti_template_sagittal, create_mask=False, debug=args.debug)
 
             # Move all nifti files to child directory named input
             move_all_nifti_files_to_child_directory_named_input(
@@ -516,7 +554,7 @@ def main(args):
     else:
         # Convert hdf files to nifti
         convert_all_hdf_files_in_dir_to_nifti(
-            args.data_path, args.debug, args.resolution)
+            args.data_path, args.debug, args.resolution, args.resolution_sagittal)
 
         # Get first nifti file in subdirectory
         nifti_filename = get_first_nifti_file_in_dir(args.data_path)
@@ -526,7 +564,7 @@ def main(args):
 
         # Preprocess the file
         preprocess_file(nifti_file_path, nifti_filename,
-                        args.threshold, args.data_path, args.normalize_per_slice, args.downsample, args.resolution, args.downsample_rate, args.ignore_slice_dimension, args.slice_thickness, create_mask=True, debug=args.debug)
+                        args.threshold, args.data_path, args.normalize_per_slice, args.downsample, args.resolution, args.downsample_rate, args.ignore_slice_dimension, args.slice_thickness, args.nifti_template, args.nifti_template_sagittal, create_mask=args.mask, debug=args.debug)
 
         # Get all other nifti files in the subdirectory
         nifti_files = [f for f in os.listdir(args.data_path) if f.endswith(
@@ -534,12 +572,15 @@ def main(args):
 
         # Preprocess other nifti files
         for nifti_filename in nifti_files:
+            # Get used resolution
+            used_resolution = args.resolution_sagittal if "sag" in nifti_filename else args.resolution
+
             # Get the nifti file path
             nifti_file_path = os.path.join(args.data_path, nifti_filename)
 
             # Preprocess the file
             preprocess_file(nifti_file_path, nifti_filename,
-                            args.threshold, args.data_path, args.normalize_per_slice, args.downsample, args.resolution, args.downsample_rate, args.ignore_slice_dimension, args.slice_thickness, create_mask=False, debug=args.debug)
+                            args.threshold, args.data_path, args.normalize_per_slice, args.downsample, used_resolution, args.downsample_rate, args.ignore_slice_dimension, args.slice_thickness, args.nifti_template, args.nifti_template_sagittal, create_mask=False, debug=args.debug)
 
         # Move all nifti files to child directory named input
         move_all_nifti_files_to_child_directory_named_input(args.data_path)
@@ -560,6 +601,7 @@ if __name__ == "__main__":
     # Add arguments
     parser.add_argument("-d", "--data-path", type=str, required=True,
                         help="Path to directory containing high-resolution NIfTI images")
+    parser.add_argument("-m", "--mask", action="store_true", default=False, help="If provided, the mask will be created.")
     parser.add_argument("-t", "--threshold", type=float, default=0.1,
                         help="Threshold value for segmentation and mask creation. If not provided, the threshold will be calculated using the Otsu method. Default: 0.1")
     parser.add_argument("-a", "--process-all-files", action="store_true",
@@ -568,6 +610,8 @@ if __name__ == "__main__":
                         help="If provided, the volume will be normalized per slice. Otherwise, the volume will be normalized as a whole.")
     parser.add_argument("-r", "--resolution", type=float, nargs=3,
                         help="Resolution of the input data in mm.")
+    parser.add_argument("-rs", "--resolution-sagittal", type=float, nargs=3,
+                        help="Resolution of the input data in mm for the sagittal orientation.")
     parser.add_argument("-ds", "--downsample", action="store_true",
                         default=False, help="If provided, the input data will be downsampled.")
     parser.add_argument("-dsr", "--downsample-rate", type=int,
@@ -576,6 +620,8 @@ if __name__ == "__main__":
                         default=False, help="If provided, the slice dimension will be ignored when downsampling.")
     parser.add_argument("-st", "--slice-thickness", type=float,
                         default=1, help="Slice thickness used for downsampling. Default: 1")
+    parser.add_argument("-nt", "--nifti-template", type=str, default=None, help="Path to nifti file to use as template for the output files. If not provided, the first nifti file in the data directory will be used.")
+    parser.add_argument("-nts", "--nifti-template-sagittal", type=str, default=None, help="Path to nifti file to use as template for the output files for the sagittal orientation. If not provided, the first nifti file in the data directory will be used.")
     parser.add_argument("-db", "--debug", action="store_true",
                         help="Enable debug mode, only for single file processing (plots volume and mask)")
 
