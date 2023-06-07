@@ -114,9 +114,6 @@ def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_
         if debug:
             print("Volume data shape after permutation:", volume_data.shape)
 
-    # Create nifti file with new voxel spacing
-    nifti_data = nib.Nifti1Image(volume_data, np.eye(4))
-
     # Set the new voxel spacing if provided
     if new_voxel_spacing is not None:
         # Get index of the dimension with the smallest size
@@ -132,6 +129,12 @@ def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_
         
         if debug:
             print("New voxel spacing:", new_voxel_spacing)
+
+    # Create transformation matrix
+    transformation_matrix = create_transformation_matrix_nifti(volume_data.shape, new_voxel_spacing)
+
+    # Create nifti file with new voxel spacing
+    nifti_data = nib.Nifti1Image(volume_data, transformation_matrix)
 
     if not nifti_template and not nifti_template_sagittal:
         # Set the new voxel spacing
@@ -415,10 +418,28 @@ def preprocess_file(nifti_path, nifti_filename, threshold, output_path, normaliz
         # Save the mask
         save_stack_in_directory(
             brain_mask, mask_filename, output_path, mask_voxel_spacing, nifti_template, nifti_template_sagittal, debug)
+        
+def create_transformation_matrix_nifti(volume_shape, volume_spacing, debug=False):
+    # Create a transformation matrix to transform the nifti volume to the correct voxel spacing
+    transformation_matrix = np.eye(4)
+
+    # Set the diagonal values to the voxel spacing
+    transformation_matrix[0, 0] = volume_spacing[0]
+    transformation_matrix[1, 1] = volume_spacing[1]
+    transformation_matrix[2, 2] = volume_spacing[2]
+
+    # Set the translation values to the center of the volume
+    transformation_matrix[0, 3] = volume_shape[0] / 2
+    transformation_matrix[1, 3] = volume_shape[1] / 2
+    transformation_matrix[2, 3] = volume_shape[2] / 2
+
+    if debug:
+        print("Transformation matrix:", transformation_matrix)
+
+    return transformation_matrix
 
 
 def convert_hdf_file_to_nifti(hdf_file_path, output_path, debug=False, resolution=None):
-    # TODO: not convert to nifti first, but handle the volume data directly
     # Open the hdf file
     hdf_data = h5py.File(hdf_file_path, "r")["reconstruction"][
         ()

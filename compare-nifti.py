@@ -21,6 +21,19 @@ for key in header1:
     else:
         print(f'Header key {key} has values: {header1[key]} vs {header2[key]}')
 
+
+# Compare transformation matrices
+matrix1 = nii1.affine
+matrix2 = nii2.affine
+if matrix1.shape != matrix2.shape:
+    print(f'Matrix shape is different: {matrix1.shape} vs {matrix2.shape}')
+elif not (matrix1 == matrix2).all():
+    print('Matrix is different')
+
+# Print transformation matrix
+print(matrix1)
+print(matrix2)
+
 # # Compare the data
 # data1 = nii1.get_fdata()
 # data2 = nii2.get_fdata()
