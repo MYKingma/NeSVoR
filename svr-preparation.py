@@ -100,16 +100,9 @@ def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_
         if debug:
             print("Volume data shape before permutation:", volume_data.shape)
 
-        # Check if there are two dimensions with the same size
-        if volume_data.shape[0] == volume_data.shape[1] or volume_data.shape[0] == volume_data.shape[2] or volume_data.shape[1] == volume_data.shape[2]:
-            # Set orientation for sagittal view
-            volume_data = np.flip(volume_data, axis=(0, 1))
-            volume_data = np.transpose(volume_data, (0, 2, 1))
-
-        else:
-            # Set orientation for axial view
-            volume_data = np.flip(volume_data, axis=(1, 2))
-            volume_data = np.transpose(volume_data, (2, 1, 0))
+        # Move slice dimension to the end (slice dimension is the dimension with the smallesr size)
+        slice_dimension_index = np.argmin(volume_data.shape)
+        volume_data = np.moveaxis(volume_data, slice_dimension_index, -1)
 
         if debug:
             print("Volume data shape after permutation:", volume_data.shape)
