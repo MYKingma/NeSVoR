@@ -767,9 +767,9 @@ if __name__ == "__main__":
                         default=None, help="Flip the volume. Default: None")
     parser.add_argument("-fls", "--flip-sag", type=str_to_bool, nargs=3,
                         default=None, help="Flip the volume for the sagittal orientation. Default: None")
-    parser.add_argument("-off", "--offset", type=int, nargs=3,
+    parser.add_argument("-off", "--offset", type=float, nargs=3,
                         default=None, help="Offset the volume. Default: None")
-    parser.add_argument("-offs", "--offset-sag", type=int, nargs=3,
+    parser.add_argument("-offs", "--offset-sag", type=float, nargs=3,
                         default=None, help="Offset the volume for the sagittal orientation. Default: None")
     parser.add_argument("-db", "--debug", action="store_true",
                         help="Enable debug mode, only for single file processing (plots volume and mask)")
