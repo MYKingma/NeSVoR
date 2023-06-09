@@ -473,9 +473,10 @@ def create_transformation_matrix_nifti(volume_shape, volume_spacing, filename, a
     if args.offset or args.offset_sag:
         used_offset = args.offset if "sag" not in filename else args.offset_sag
 
-        transformation_matrix[0, 3] = used_offset[0]
-        transformation_matrix[1, 3] = used_offset[1]
-        transformation_matrix[2, 3] = used_offset[2]
+        if used_offset:
+            transformation_matrix[0, 3] = used_offset[0]
+            transformation_matrix[1, 3] = used_offset[1]
+            transformation_matrix[2, 3] = used_offset[2]
 
     if args.debug:
         print("Volume shape:", volume_shape)
