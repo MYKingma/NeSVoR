@@ -102,7 +102,11 @@ def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_
 
         # Move slice dimension to the end (slice dimension is the dimension with the smallesr size)
         slice_dimension_index = np.argmin(volume_data.shape)
-        volume_data = np.moveaxis(volume_data, slice_dimension_index, -1)
+
+        if slice_dimension_index == 0:
+            volume_data = np.transpose(volume_data, (2, 1, 0))
+        elif slice_dimension_index == 1:
+            volume_data = np.transpose(volume_data, (2, 0, 1))
 
         if args.debug:
             print("Volume data shape after permutation:", volume_data.shape)
