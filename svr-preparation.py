@@ -124,7 +124,7 @@ def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_
             print("New voxel spacing:", new_voxel_spacing)
 
     # Create transformation matrix
-    transformation_matrix = create_transformation_matrix_nifti(volume_data.shape, new_voxel_spacing, args)
+    transformation_matrix = create_transformation_matrix_nifti(volume_data.shape, new_voxel_spacing, nifti_filename, args)
 
     if args.int16:
         # Convert to int16
@@ -138,7 +138,7 @@ def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_
         nifti_data.header.set_zooms(new_voxel_spacing)
 
         # Save the nifti file
-        # nib.save(nifti_data, os.path.join(output_path, nifti_filename))
+        nib.save(nifti_data, os.path.join(output_path, nifti_filename))
     
     else:
         if "sag" in nifti_filename:
@@ -151,7 +151,7 @@ def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_
         
         new_nifti_data = nib.Nifti1Image(nifti_image, nifti_data.affine, nifti_data.header)
 
-        # nib.save(new_nifti_data, os.path.join(output_path, nifti_filename))
+        nib.save(new_nifti_data, os.path.join(output_path, nifti_filename))
 
 
 def compute_brain_mask(volume, threshold=None, min_size=100):
@@ -392,7 +392,7 @@ def preprocess_file(nifti_path, nifti_filename, output_path, args):
         # Compute the brain mask of first orientation
         brain_mask = compute_brain_mask(nifti_data, args)
 
-        if args.debug:
+        if args.debug and args.plot:
             plot_volume(nifti_data)
             plot_volume(brain_mask)
             print("Brain mask shape:", brain_mask.shape)
@@ -416,7 +416,37 @@ def preprocess_file(nifti_path, nifti_filename, output_path, args):
         save_stack_in_directory(
             brain_mask, mask_filename, output_path, mask_voxel_spacing, args)
         
-def create_transformation_matrix_nifti(volume_shape, volume_spacing, args):
+def flip_data_with_transformation_matrix(transformation_matrix, filename, args):
+    flip_arguments = args.flip if "sag" not in filename else args.flip_sag
+
+    if bool(flip_arguments[0]):
+        print(bool(flip_arguments[0]))
+        transformation_matrix[0, 0] = -1 * transformation_matrix[0, 0]
+    if bool(flip_arguments[1]):
+        transformation_matrix[1, 1] = -1 * transformation_matrix[1, 1]
+    if bool(flip_arguments[2]):
+        transformation_matrix[2, 2] = -1 * transformation_matrix[2, 2]
+
+    if args.debug:
+        print("Flipped transformation matrix:\n", transformation_matrix)
+
+    return transformation_matrix
+
+def transpose_data_with_transformation_matrix(transformation_matrix, filename, args):
+    transpose_args = args.transpose if "sag" not in filename else args.transpose_sag
+
+    transposed_transformation_matrix = np.eye(4)
+    transposed_transformation_matrix[0, :] = transformation_matrix[transpose_args[0], :]
+    transposed_transformation_matrix[1, :] = transformation_matrix[transpose_args[1], :]
+    transposed_transformation_matrix[2, :] = transformation_matrix[transpose_args[2], :]
+
+    if args.debug:
+        print("Transposed transformation matrix:\n", transposed_transformation_matrix)
+
+    return transposed_transformation_matrix
+
+
+def create_transformation_matrix_nifti(volume_shape, volume_spacing, filename, args):
     # Create a transformation matrix to transform the nifti volume to the correct voxel spacing
     transformation_matrix = np.eye(4)
 
@@ -428,6 +458,12 @@ def create_transformation_matrix_nifti(volume_shape, volume_spacing, args):
     if args.debug:
         print("Volume shape:", volume_shape)
         print("Transformation matrix:\n", transformation_matrix)
+
+    if args.flip or args.flip_sag:
+        transformation_matrix = flip_data_with_transformation_matrix(transformation_matrix, filename, args)
+
+    if args.transpose or args.transpose_sag:
+        transformation_matrix = transpose_data_with_transformation_matrix(transformation_matrix, filename, args)
 
     return transformation_matrix
 
@@ -444,7 +480,9 @@ def convert_hdf_file_to_nifti(hdf_file_path, output_path, args):
         print("Volume min:", np.min(np.abs(hdf_data)))
         print("Volume max:", np.max(np.abs(hdf_data)))
         print("Volume shape:", hdf_data.shape)
-        plot_abs_angle_real_imag_from_complex_volume(hdf_data)
+
+        if args.plot:
+            plot_abs_angle_real_imag_from_complex_volume(hdf_data)
 
     # Create nifti file with new voxel spacing
     nifti_data = nib.Nifti1Image(np.abs(hdf_data), np.eye(4))
@@ -617,6 +655,14 @@ if __name__ == "__main__":
     # Create argument parser object
     parser = argparse.ArgumentParser(
         description="Prepare data for SVR toolbox")
+    
+    def str_to_bool(value):
+        if value.lower() in ('yes', 'true', 't', 'y', '1'):
+            return True
+        elif value.lower() in ('no', 'false', 'f', 'n', '0'):
+            return False
+        else:
+            raise argparse.ArgumentTypeError('Boolean value expected.')
 
     # Add arguments
     parser.add_argument("-d", "--data-path", type=str, required=True,
@@ -644,8 +690,18 @@ if __name__ == "__main__":
     parser.add_argument("-nts", "--nifti-template-sagittal", type=str, default=None, help="Path to nifti file to use as template for the output files for the sagittal orientation. If not provided, the first nifti file in the data directory will be used.")
     parser.add_argument("-int16", "--int16", action="store_true",
                         default=False, help="If provided, the output files will be saved as int16. Otherwise, they will be saved as the data type provided.")
+    parser.add_argument("-tp", "--transpose", type=int, nargs=3,
+                        default=None, help="Transpose the volume. Default: None")
+    parser.add_argument("-tps", "--transpose-sag", type=int, nargs=3,
+                        default=None, help="Transpose the volume for the sagittal orientation. Default: None")
+    parser.add_argument("-fl", "--flip", type=str_to_bool, nargs=3,
+                        default=None, help="Flip the volume. Default: None")
+    parser.add_argument("-fls", "--flip-sag", type=str_to_bool, nargs=3,
+                        default=None, help="Flip the volume for the sagittal orientation. Default: None")
     parser.add_argument("-db", "--debug", action="store_true",
                         help="Enable debug mode, only for single file processing (plots volume and mask)")
+    parser.add_argument("-plt", "--plot", action="store_true",
+                        help="Enable plotting of the volume and mask during debug mode")
 
     # Parse the arguments
     args = parser.parse_args()
