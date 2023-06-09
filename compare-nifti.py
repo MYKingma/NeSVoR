@@ -34,10 +34,10 @@ elif not (matrix1 == matrix2).all():
 print(matrix1)
 print(matrix2)
 
-# # Compare the data
-# data1 = nii1.get_fdata()
-# data2 = nii2.get_fdata()
-# if data1.shape != data2.shape:
-#     print(f'Data shape is different: {data1.shape} vs {data2.shape}')
-# elif not (data1 == data2).all():
-#     print('Data is different')
+# Compare the shape of the data
+data1 = nii1.get_fdata()
+data2 = nii2.get_fdata()
+
+# Print data shape
+print(data1.shape)
+print(data2.shape)
