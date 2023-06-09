@@ -130,7 +130,7 @@ def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_
         transformed_volume_data = apply_transformations_to_data(volume_data, nifti_filename, args)
 
         # Plot the volume data in all orientations
-        plot_orientations(transformed_volume_data)
+        plot_orientations(transformed_volume_data, new_voxel_spacing, nifti_filename)
 
     if args.int16:
         # Convert to int16
@@ -560,18 +560,35 @@ def apply_transformations_to_data(volume_data, filename, args):
 
     return volume_data
 
-def plot_orientations(volume_data, slice_index = 30):
-    # Plot Axial, Coronal and Sagittal slices
-    plt.figure(figsize=(15, 5))
-    plt.subplot(1, 3, 1)
-    plt.imshow(volume_data[:, :, slice_index], cmap="gray")
-    plt.title("Axial")
-    plt.subplot(1, 3, 2)
-    plt.imshow(volume_data[:, slice_index, :], cmap="gray")
-    plt.title("Coronal")
-    plt.subplot(1, 3, 3)
-    plt.imshow(volume_data[slice_index, :, :], cmap="gray")
-    plt.title("Sagittal")
+def plot_orientations(volume_data, spacing, filename, slice_index = 25):
+    # Get slice dimension spacing, is highest spacing value
+    slice_dimension_spacing = np.max(spacing)
+
+    # Get voxexl spacing, is lowest spacing value
+    voxel_spacing = np.min(spacing)
+
+    # Plot Axial, Coronal and Sagittal slices, remove axis ticks and labels
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    axes[0].imshow(volume_data[:, :, slice_index], cmap="gray")
+    axes[0].set_title("Axial")
+    axes[0].axis("off")
+    axes[1].imshow(volume_data[:, slice_index, :], cmap="gray")
+    axes[1].set_title("Coronal")
+    axes[1].axis("off")
+    axes[2].imshow(volume_data[slice_index, :, :], cmap="gray")
+    axes[2].set_title("Sagittal")
+    axes[2].axis("off")
+
+    # Set the spacing of the plotted image
+    if "sag" in filename:
+        axes[0].set_aspect(slice_dimension_spacing / voxel_spacing)
+        axes[1].set_aspect(slice_dimension_spacing / voxel_spacing)
+        axes[2].set_aspect(voxel_spacing / voxel_spacing)
+    else:
+        axes[0].set_aspect(voxel_spacing / voxel_spacing)
+        axes[1].set_aspect(voxel_spacing / slice_dimension_spacing)
+        axes[2].set_aspect(voxel_spacing / slice_dimension_spacing)
+
     plt.show()
 
 def move_all_hdf_files_to_child_directory_named_HDF(dir):
