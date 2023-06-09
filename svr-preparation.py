@@ -73,11 +73,11 @@ def plot_slice_in_orientation_from_volume(volume_data, orientation, slice_number
     plt.show()
 
 
-def get_first_nifti_file_in_dir(path):
+def get_first_nifti_file_in_dir(args):
     nifti_files = [f for f in os.listdir(
-        path) if f.endswith(".nii.gz") and "trans" in f and "sag" not in f]
+        args.data_path) if f.endswith(".nii.gz") and "trans" in f and "sag" not in f]
     if len(nifti_files) == 0:
-        nifti_files = [f for f in os.listdir(path) if f.endswith(".nii.gz") and "sag" not in f]
+        nifti_files = [f for f in os.listdir(args.data_path) if f.endswith(".nii.gz") and "sag" not in f]
     return nifti_files[0]
 
 
@@ -95,16 +95,16 @@ def get_slice_from_dimension(volume_data, dimension, slice_number):
     return slice_data
 
 
-def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_spacing=None, nifti_template=None, nifti_template_sagittal=None, debug=False):
-    if not nifti_template and not nifti_template_sagittal:
-        if debug:
+def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_spacing, args):
+    if not args.nifti_template and not args.nifti_template_sagittal:
+        if args.debug:
             print("Volume data shape before permutation:", volume_data.shape)
 
         # Move slice dimension to the end (slice dimension is the dimension with the smallesr size)
         slice_dimension_index = np.argmin(volume_data.shape)
         volume_data = np.moveaxis(volume_data, slice_dimension_index, -1)
 
-        if debug:
+        if args.debug:
             print("Volume data shape after permutation:", volume_data.shape)
 
     # Set the new voxel spacing if provided
@@ -120,34 +120,38 @@ def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_
         new_voxel_spacing = np.insert(
             new_voxel_spacing, min_dimension_index, max_voxel_value, axis=0)
         
-        if debug:
+        if args.debug:
             print("New voxel spacing:", new_voxel_spacing)
 
     # Create transformation matrix
-    transformation_matrix = create_transformation_matrix_nifti(volume_data.shape, new_voxel_spacing)
+    transformation_matrix = create_transformation_matrix_nifti(volume_data.shape, new_voxel_spacing, args)
+
+    if args.int16:
+        # Convert to int16
+        volume_data = (volume_data * 32767).astype(np.int16)
 
     # Create nifti file with new voxel spacing
     nifti_data = nib.Nifti1Image(volume_data, transformation_matrix)
 
-    if not nifti_template and not nifti_template_sagittal:
+    if not args.nifti_template and not args.nifti_template_sagittal:
         # Set the new voxel spacing
         nifti_data.header.set_zooms(new_voxel_spacing)
 
         # Save the nifti file
-        nib.save(nifti_data, os.path.join(output_path, nifti_filename))
+        # nib.save(nifti_data, os.path.join(output_path, nifti_filename))
     
     else:
         if "sag" in nifti_filename:
-            nifti_data = nib.load(nifti_template_sagittal)
+            nifti_data = nib.load(args.nifti_template_sagittal)
         else:
-            nifti_data = nib.load(nifti_template)
+            nifti_data = nib.load(args.nifti_template)
 
         nifti_image = nifti_data.get_fdata()
         nifti_image = volume_data
         
         new_nifti_data = nib.Nifti1Image(nifti_image, nifti_data.affine, nifti_data.header)
 
-        nib.save(new_nifti_data, os.path.join(output_path, nifti_filename))
+        # nib.save(new_nifti_data, os.path.join(output_path, nifti_filename))
 
 
 def compute_brain_mask(volume, threshold=None, min_size=100):
@@ -221,9 +225,9 @@ def normalize_volume(volume, normalize_per_slice=False):
     return volume
 
 
-def load_nifti_file(niftiPath):
+def load_nifti_file(nifti_path):
     # Open the nifti file
-    nifti = nib.load(niftiPath)
+    nifti = nib.load(nifti_path)
 
     # Get the data from the nifti file
     nifti_data = nifti.get_fdata()
@@ -299,8 +303,8 @@ def get_highest_length_dimension(shape):
     return selected_dimension
 
 
-def downsample_volume(volume, downsample_rate, resolution, nifti_voxel_spacing, ignore_slice_dimension=False, slice_thickness=None, debug=False):
-    if debug:
+def downsample_volume(volume, nifti_voxel_spacing, args):
+    if args.debug:
         print("Original volume shape:", volume.shape)
 
     # Get the voxel spacing to use
@@ -308,7 +312,7 @@ def downsample_volume(volume, downsample_rate, resolution, nifti_voxel_spacing, 
         resolution = nifti_voxel_spacing
 
     # Define the downsampling factor based on the downsample rate
-    factor = int(downsample_rate)
+    factor = int(args.downsample_rate)
 
     # Get the slice dimension
     slice_dimension = get_lowest_length_dimension(volume.shape)
@@ -316,23 +320,23 @@ def downsample_volume(volume, downsample_rate, resolution, nifti_voxel_spacing, 
     # Create block size with factors for each dimension
     block_size = [factor, factor, factor]
 
-    if ignore_slice_dimension:
+    if args.ignore_slice_dimension:
         # Set the block size for the slice dimension to 1
         block_size[slice_dimension] = 1
 
     else:
-        if slice_thickness is not None:
+        if args.slice_thickness is not None:
             # Calculate the downsampling factor for the slice dimension
-            slice_factor = int(slice_thickness / resolution[slice_dimension])
+            slice_factor = int(args.slice_thickness / resolution[slice_dimension])
 
             # Set the block size for the slice dimension to the slice thickness
             block_size[slice_dimension] = int(slice_factor)
 
-            if debug:
-                print("Slice thickness:", slice_thickness)
+            if args.debug:
+                print("Slice thickness:", args.slice_thickness)
                 print("Slice factor:", slice_factor)
 
-    if debug:
+    if args.debug:
         print("Used block size:", block_size)
 
     # Apply the block_reduce function with a mean function to the volume
@@ -342,14 +346,14 @@ def downsample_volume(volume, downsample_rate, resolution, nifti_voxel_spacing, 
     # Calculate the new voxel spacing in integer values
     new_voxel_spacing = np.array(resolution) * np.array(block_size)
 
-    if debug:
+    if args.debug:
         print("Downsampled volume shape:", downsampled_volume.shape)
         print("New voxel spacing:", new_voxel_spacing)
 
     return downsampled_volume, new_voxel_spacing
 
 
-def preprocess_file(nifti_path, nifti_filename, threshold, output_path, normalize_per_slice=False, donwsample_file=False, resolution=None, downsample_rate=None, ignore_slice_dimension=None, slice_thickness=None, nifti_template=None, nifti_template_sagittal=None, create_mask=False, debug=False):
+def preprocess_file(nifti_path, nifti_filename, output_path, args):
     # with tqdm(total=3, desc="Preprocessing {}".format(nifti_filename), leave=False) as pbar:
 
     # Load the nifti file
@@ -359,36 +363,36 @@ def preprocess_file(nifti_path, nifti_filename, threshold, output_path, normaliz
     # pbar.update(1)
 
     # Normalize the volume
-    nifti_data = normalize_volume(nifti_data, normalize_per_slice)
+    nifti_data = normalize_volume(nifti_data, args.normalize_per_slice)
 
-    if debug:
+    if args.debug:
         print("Volume shape:", nifti_data.shape)
         print("Nifti voxel spacing:", nifti_voxel_spacing)
-        print("Resolution:", resolution)
+        print("Resolution:", args.used_resolution)
         print("Normalised volume min:", np.min(nifti_data))
         print("Normalised volume max:", np.max(nifti_data))
 
-    if donwsample_file:
+    if args.downsample:
         # Downsample the volume
         nifti_data, new_voxel_spacing = downsample_volume(
-            nifti_data, downsample_rate, resolution, nifti_voxel_spacing, ignore_slice_dimension, slice_thickness, debug)
+            nifti_data, nifti_voxel_spacing, args)
 
         # Normalize the volume
-        nifti_data = normalize_volume(nifti_data, normalize_per_slice)
+        nifti_data = normalize_volume(nifti_data, args)
 
         nifti_voxel_spacing = new_voxel_spacing
 
     # Save the downsampled volume
     save_stack_in_directory(
-        nifti_data, nifti_filename, output_path, nifti_voxel_spacing, nifti_template, nifti_template_sagittal, debug)
+        nifti_data, nifti_filename, output_path, nifti_voxel_spacing, args)
 
     # pbar.update(1)
 
-    if create_mask:
+    if args.mask:
         # Compute the brain mask of first orientation
-        brain_mask = compute_brain_mask(nifti_data, threshold)
+        brain_mask = compute_brain_mask(nifti_data, args)
 
-        if debug:
+        if args.debug:
             plot_volume(nifti_data)
             plot_volume(brain_mask)
             print("Brain mask shape:", brain_mask.shape)
@@ -400,19 +404,19 @@ def preprocess_file(nifti_path, nifti_filename, threshold, output_path, normaliz
         mask_filename = nifti_filename + "_mask.nii.gz"
 
         # Get correct mask voxel spacing
-        if donwsample_file:
+        if args.donwsample_file:
             mask_voxel_spacing = new_voxel_spacing
         else:
             mask_voxel_spacing = nifti_voxel_spacing
 
-        if debug:
+        if args.debug:
             print("Mask voxel spacing:", mask_voxel_spacing)
 
         # Save the mask
         save_stack_in_directory(
-            brain_mask, mask_filename, output_path, mask_voxel_spacing, nifti_template, nifti_template_sagittal, debug)
+            brain_mask, mask_filename, output_path, mask_voxel_spacing, args)
         
-def create_transformation_matrix_nifti(volume_shape, volume_spacing, debug=False):
+def create_transformation_matrix_nifti(volume_shape, volume_spacing, args):
     # Create a transformation matrix to transform the nifti volume to the correct voxel spacing
     transformation_matrix = np.eye(4)
 
@@ -421,24 +425,20 @@ def create_transformation_matrix_nifti(volume_shape, volume_spacing, debug=False
     transformation_matrix[1, 1] = volume_spacing[1]
     transformation_matrix[2, 2] = volume_spacing[2]
 
-    # Set the translation values to the center of the volume
-    transformation_matrix[0, 3] = volume_shape[0] / 2
-    transformation_matrix[1, 3] = volume_shape[1] / 2
-    transformation_matrix[2, 3] = volume_shape[2] / 2
-
-    if debug:
-        print("Transformation matrix:", transformation_matrix)
+    if args.debug:
+        print("Volume shape:", volume_shape)
+        print("Transformation matrix:\n", transformation_matrix)
 
     return transformation_matrix
 
 
-def convert_hdf_file_to_nifti(hdf_file_path, output_path, debug=False, resolution=None):
+def convert_hdf_file_to_nifti(hdf_file_path, output_path, args):
     # Open the hdf file
     hdf_data = h5py.File(hdf_file_path, "r")["reconstruction"][
         ()
     ].squeeze()
 
-    if debug:
+    if args.debug:
         # Plot volume
         print("File", hdf_file_path)
         print("Volume min:", np.min(np.abs(hdf_data)))
@@ -450,8 +450,8 @@ def convert_hdf_file_to_nifti(hdf_file_path, output_path, debug=False, resolutio
     nifti_data = nib.Nifti1Image(np.abs(hdf_data), np.eye(4))
 
     # Set the new voxel spacing if provided
-    if resolution is not None:
-        nifti_data.header.set_zooms(resolution)
+    if args.used_resolution is not None:
+        nifti_data.header.set_zooms(args.used_resolution)
 
     # Save the nifti file
     nib.save(nifti_data, output_path)
@@ -465,18 +465,18 @@ def is_hdf_file(file_path):
         return False
 
 
-def convert_all_hdf_files_in_dir_to_nifti(dir, debug=False, resolution=None, resolution_sagittal=None):
+def convert_all_hdf_files_in_dir_to_nifti(args):
     # Loop over all hdf files in the directory
-    for file in os.listdir(dir):
-        file_path = os.path.join(dir, file)
-        used_resolution = resolution_sagittal if "sag" in file_path else resolution
+    for file in os.listdir(args.data_path):
+        file_path = os.path.join(args.data_path, file)
+        args.used_resolution = args.resolution_sagittal if "sag" in file_path else args.resolution
         if is_hdf_file(file_path):
             # Get the nifti file path
             nifti_file_path = os.path.join(file_path + ".nii.gz")
 
             # Convert the hdf file to nifti
             convert_hdf_file_to_nifti(
-                file_path, nifti_file_path, debug, used_resolution)
+                file_path, nifti_file_path, args)
 
 
 def move_all_nifti_files_to_child_directory_named_input(dir):
@@ -530,17 +530,20 @@ def main(args):
 
             # Convert hdf files to nifti
             convert_all_hdf_files_in_dir_to_nifti(
-                subdirectory_path, args.debug, args.resolution, args.resolution_sagittal)
+                subdirectory_path, args)
 
             # Get first nifti file in subdirectory
             nifti_filename = get_first_nifti_file_in_dir(
                 subdirectory_path)
             nifti_file_path = os.path.join(
                 subdirectory_path, nifti_filename)
+            
+            # Set the used resolution
+            args.used_resolution = args.resolution
 
             # Preprocess the file
             preprocess_file(nifti_file_path,
-                            nifti_filename, args.threshold, subdirectory_path, args.normalize_per_slice, args.downsample, args.resolution, args.downsample_rate, args.ignore_slice_dimension, args.slice_thickness, args.nifti_template, args.nifti_template_sagittal, create_mask=args.mask, debug=args.debug)
+                            nifti_filename, subdirectory_path, args)
 
             # Get all other nifti files in the subdirectory
             nifti_files = [f for f in os.listdir(subdirectory_path) if f.endswith(
@@ -549,7 +552,7 @@ def main(args):
             # Preprocess other nifti files
             for nifti_filename in nifti_files:
                 # Get used resolution
-                used_resolution = args.resolution_sagittal if "sag" in nifti_filename else args.resolution
+                args.used_resolution = args.resolution_sagittal if "sag" in nifti_filename else args.resolution
 
                 # Get the nifti file path
                 nifti_file_path = os.path.join(
@@ -557,28 +560,31 @@ def main(args):
 
                 # Preprocess the file
                 preprocess_file(nifti_file_path, nifti_filename,
-                                args.threshold, subdirectory_path, args.normalize_per_slice, args.downsample, used_resolution, args.downsample_rate, args.ignore_slice_dimension, args.slice_thickness, args.nifti_template, args.nifti_template_sagittal, create_mask=False, debug=args.debug)
+                                subdirectory_path, args)
 
-            # Move all nifti files to child directory named input
-            move_all_nifti_files_to_child_directory_named_input(
-                subdirectory_path)
+            if not args.debug:
+                # Move all nifti files to child directory named input
+                move_all_nifti_files_to_child_directory_named_input(
+                    subdirectory_path)
 
-            # Move all hdf files to child directory named HDF
-            move_all_hdf_files_to_child_directory_named_HDF(subdirectory_path)
+                # Move all hdf files to child directory named HDF
+                move_all_hdf_files_to_child_directory_named_HDF(subdirectory_path)
     else:
         # Convert hdf files to nifti
         convert_all_hdf_files_in_dir_to_nifti(
-            args.data_path, args.debug, args.resolution, args.resolution_sagittal)
+            args)
 
         # Get first nifti file in subdirectory
-        nifti_filename = get_first_nifti_file_in_dir(args.data_path)
+        nifti_filename = get_first_nifti_file_in_dir(args)
 
         # Get the nifti file path
         nifti_file_path = os.path.join(args.data_path, nifti_filename)
 
+        # Set the used resolution
+        args.used_resolution = args.resolution
+
         # Preprocess the file
-        preprocess_file(nifti_file_path, nifti_filename,
-                        args.threshold, args.data_path, args.normalize_per_slice, args.downsample, args.resolution, args.downsample_rate, args.ignore_slice_dimension, args.slice_thickness, args.nifti_template, args.nifti_template_sagittal, create_mask=args.mask, debug=args.debug)
+        preprocess_file(nifti_file_path, nifti_filename, args.data_path, args)
 
         # Get all other nifti files in the subdirectory
         nifti_files = [f for f in os.listdir(args.data_path) if f.endswith(
@@ -587,20 +593,20 @@ def main(args):
         # Preprocess other nifti files
         for nifti_filename in nifti_files:
             # Get used resolution
-            used_resolution = args.resolution_sagittal if "sag" in nifti_filename else args.resolution
+            args.used_resolution = args.resolution_sagittal if "sag" in nifti_filename else args.resolution
 
             # Get the nifti file path
             nifti_file_path = os.path.join(args.data_path, nifti_filename)
 
             # Preprocess the file
-            preprocess_file(nifti_file_path, nifti_filename,
-                            args.threshold, args.data_path, args.normalize_per_slice, args.downsample, used_resolution, args.downsample_rate, args.ignore_slice_dimension, args.slice_thickness, args.nifti_template, args.nifti_template_sagittal, create_mask=False, debug=args.debug)
+            preprocess_file(nifti_file_path, nifti_filename, args.data_path, args)
 
-        # Move all nifti files to child directory named input
-        move_all_nifti_files_to_child_directory_named_input(args.data_path)
+        if not args.debug:
+            # Move all nifti files to child directory named input
+            move_all_nifti_files_to_child_directory_named_input(args.data_path)
 
-        # Move all hdf files to child directory named HDF
-        move_all_hdf_files_to_child_directory_named_HDF(args.data_path)
+            # Move all hdf files to child directory named HDF
+            move_all_hdf_files_to_child_directory_named_HDF(args.data_path)
 
     # tqdm.write("Processing complete.")
 
@@ -636,6 +642,8 @@ if __name__ == "__main__":
                         default=1, help="Slice thickness used for downsampling. Default: 1")
     parser.add_argument("-nt", "--nifti-template", type=str, default=None, help="Path to nifti file to use as template for the output files. If not provided, the first nifti file in the data directory will be used.")
     parser.add_argument("-nts", "--nifti-template-sagittal", type=str, default=None, help="Path to nifti file to use as template for the output files for the sagittal orientation. If not provided, the first nifti file in the data directory will be used.")
+    parser.add_argument("-int16", "--int16", action="store_true",
+                        default=False, help="If provided, the output files will be saved as int16. Otherwise, they will be saved as the data type provided.")
     parser.add_argument("-db", "--debug", action="store_true",
                         help="Enable debug mode, only for single file processing (plots volume and mask)")
 
