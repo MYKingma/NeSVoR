@@ -470,6 +470,13 @@ def create_transformation_matrix_nifti(volume_shape, volume_spacing, filename, a
     transformation_matrix[1, 1] = volume_spacing[1]
     transformation_matrix[2, 2] = volume_spacing[2]
 
+    if args.offset or args.offset_sag:
+        used_offset = args.offset if "sag" not in filename else args.offset_sag
+
+        transformation_matrix[0, 3] = used_offset[0]
+        transformation_matrix[1, 3] = used_offset[1]
+        transformation_matrix[2, 3] = used_offset[2]
+
     if args.debug:
         print("Volume shape:", volume_shape)
         print("Transformation matrix:\n", transformation_matrix)
@@ -760,6 +767,10 @@ if __name__ == "__main__":
                         default=None, help="Flip the volume. Default: None")
     parser.add_argument("-fls", "--flip-sag", type=str_to_bool, nargs=3,
                         default=None, help="Flip the volume for the sagittal orientation. Default: None")
+    parser.add_argument("-off", "--offset", type=int, nargs=3,
+                        default=None, help="Offset the volume. Default: None")
+    parser.add_argument("-offs", "--offset-sag", type=int, nargs=3,
+                        default=None, help="Offset the volume for the sagittal orientation. Default: None")
     parser.add_argument("-db", "--debug", action="store_true",
                         help="Enable debug mode, only for single file processing (plots volume and mask)")
     parser.add_argument("-plt", "--plot", action="store_true",
