@@ -1,4 +1,4 @@
-from scipy.ndimage import binary_fill_holes
+from scipy.ndimage import binary_fill_holes, affine_transform
 from skimage.morphology import remove_small_objects
 from skimage.filters import threshold_otsu
 import matplotlib.pyplot as plt
@@ -125,6 +125,12 @@ def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_
 
     # Create transformation matrix
     transformation_matrix = create_transformation_matrix_nifti(volume_data.shape, new_voxel_spacing, nifti_filename, args)
+
+    if args.debug:
+        transformed_volume_data = apply_transformations_to_data(volume_data, nifti_filename, args)
+
+        # Plot the volume data in all orientations
+        plot_orientations(transformed_volume_data)
 
     if args.int16:
         # Convert to int16
@@ -537,6 +543,36 @@ def move_all_nifti_files_to_child_directory_named_input(dir):
             # Move the nifti file to the input directory
             os.rename(nifti_file_path, os.path.join(input_dir, file))
 
+def apply_transformations_to_data(volume_data, filename, args):
+    transpose_axes = args.transpose if "sag" not in filename else args.transpose_sag
+    flip_axes = args.flip if "sag" not in filename else args.flip_sag
+    if transpose_axes:
+        volume_data = np.transpose(volume_data, transpose_axes)
+    if flip_axes:
+        formatted_flip_axes = []
+        if flip_axes[0]:
+            formatted_flip_axes.append(0)
+        if flip_axes[1]:
+            formatted_flip_axes.append(1)
+        if flip_axes[2]:
+            formatted_flip_axes.append(2)
+        volume_data = np.flip(volume_data, formatted_flip_axes)
+
+    return volume_data
+
+def plot_orientations(volume_data, slice_index = 30):
+    # Plot Axial, Coronal and Sagittal slices
+    plt.figure(figsize=(15, 5))
+    plt.subplot(1, 3, 1)
+    plt.imshow(volume_data[:, :, slice_index], cmap="gray")
+    plt.title("Axial")
+    plt.subplot(1, 3, 2)
+    plt.imshow(volume_data[:, slice_index, :], cmap="gray")
+    plt.title("Coronal")
+    plt.subplot(1, 3, 3)
+    plt.imshow(volume_data[slice_index, :, :], cmap="gray")
+    plt.title("Sagittal")
+    plt.show()
 
 def move_all_hdf_files_to_child_directory_named_HDF(dir):
     # Check if directory contains hdf files
