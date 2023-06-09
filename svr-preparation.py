@@ -419,8 +419,10 @@ def preprocess_file(nifti_path, nifti_filename, output_path, args):
 def flip_data_with_transformation_matrix(transformation_matrix, filename, args):
     flip_arguments = args.flip if "sag" not in filename else args.flip_sag
 
+    if not flip_arguments:
+        return transformation_matrix
+
     if bool(flip_arguments[0]):
-        print(bool(flip_arguments[0]))
         transformation_matrix[0, 0] = -1 * transformation_matrix[0, 0]
     if bool(flip_arguments[1]):
         transformation_matrix[1, 1] = -1 * transformation_matrix[1, 1]
@@ -434,6 +436,9 @@ def flip_data_with_transformation_matrix(transformation_matrix, filename, args):
 
 def transpose_data_with_transformation_matrix(transformation_matrix, filename, args):
     transpose_args = args.transpose if "sag" not in filename else args.transpose_sag
+
+    if not transpose_args:
+        return transformation_matrix
 
     transposed_transformation_matrix = np.eye(4)
     transposed_transformation_matrix[0, :] = transformation_matrix[transpose_args[0], :]
