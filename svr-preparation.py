@@ -130,7 +130,7 @@ def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_
     # Create transformation matrix
     transformation_matrix = create_transformation_matrix_nifti(volume_data.shape, new_voxel_spacing, nifti_filename, args)
 
-    if args.debug:
+    if args.debug and args.plot:
         transformed_volume_data = apply_transformations_to_data(volume_data, nifti_filename, args)
 
         # Plot the volume data in all orientations
