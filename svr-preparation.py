@@ -164,15 +164,15 @@ def save_stack_in_directory(volume_data, nifti_filename, output_path, new_voxel_
         nib.save(new_nifti_data, os.path.join(output_path, nifti_filename))
 
 
-def compute_brain_mask(volume, threshold=None, min_size=100):
+def compute_brain_mask(volume, args, min_size=100):
     # Compute threshold value using Otsu's algorithm if not provided
-    if threshold is None:
-        threshold = threshold_otsu(volume)
-        print("Calculated Otsu threshold:", threshold)
+    if args.threshold is None:
+        args.threshold = threshold_otsu(volume)
+        print("Calculated Otsu threshold:", args.threshold)
 
     # Apply threshold to the volume
     mask = np.zeros_like(volume, dtype=np.int64)
-    mask[volume > threshold] = 1
+    mask[volume > args.threshold] = 1
 
     # Fill any holes inside the brain in all dimensions
     for i in range(mask.shape[2]):
@@ -414,7 +414,7 @@ def preprocess_file(nifti_path, nifti_filename, output_path, args):
         mask_filename = nifti_filename + "_mask.nii.gz"
 
         # Get correct mask voxel spacing
-        if args.donwsample_file:
+        if args.downsample:
             mask_voxel_spacing = new_voxel_spacing
         else:
             mask_voxel_spacing = nifti_voxel_spacing
