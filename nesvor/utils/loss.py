@@ -1,6 +1,7 @@
 from typing import Optional
 import torch
 import torch.nn.functional as F
+from .misc import gaussian_blur
 
 
 def ncc_loss(
@@ -13,6 +14,7 @@ def ncc_loss(
     reduction: str = "none",
 ) -> torch.Tensor:
     spatial_dims = len(I.shape) - 2
+    assert spatial_dims in (1, 2, 3), "ncc_loss only support 3D, 4D, and 5D data"
 
     if mask is not None:
         I = I * mask
@@ -69,3 +71,50 @@ def ncc_loss(
             return -cc.view(-1, c)
         else:
             return -cc.view(-1, c, *I.shape[2:])
+
+
+def ssim_loss(
+    I: torch.Tensor,
+    J: torch.Tensor,
+    mask: Optional[torch.Tensor] = None,
+    win: int = 11,
+    sigma: float = 1.5,
+    reduction: str = "none",
+) -> torch.Tensor:
+    # normalization
+    I_min = I.min()
+    I_max = I.max()
+    J_min = J.min()
+    J_max = J.max()
+    I = (I - I_min) / (I_max - I_min)
+    J = (J - J_min) / (J_max - J_min)
+    # params
+    spatial_dims = len(I.shape) - 2
+    C1 = 0.01**2
+    C2 = 0.03**2
+    truncated = win / 2 / sigma - 0.5
+    compensation = 1.0
+
+    mu1 = gaussian_blur(I, sigma, truncated)
+    mu2 = gaussian_blur(J, sigma, truncated)
+
+    mu1_sq = mu1.pow(2)
+    mu2_sq = mu2.pow(2)
+    mu1_mu2 = mu1 * mu2
+
+    sigma1_sq = compensation * (gaussian_blur(I * I, sigma, truncated) - mu1_sq)
+    sigma2_sq = compensation * (gaussian_blur(J * J, sigma, truncated) - mu2_sq)
+    sigma12 = compensation * (gaussian_blur(I * J, sigma, truncated) - mu1_mu2)
+
+    cs_map = (2 * sigma12 + C2) / (sigma1_sq + sigma2_sq + C2)  # set alpha=beta=gamma=1
+    ssim_map = ((2 * mu1_mu2 + C1) / (mu1_sq + mu2_sq + C1)) * cs_map
+
+    if mask is not None:
+        ssim_map = ssim_map * mask
+
+    if reduction == "mean":
+        return -ssim_map.mean()
+    elif reduction == "sum":
+        return -ssim_map.sum()
+    else:
+        return -ssim_map

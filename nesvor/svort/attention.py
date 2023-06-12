@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Function
 import torchvision.models as tvm
+from typing import Tuple, Optional
 
 # modified from https://github.com/jadore801120/attention-is-all-you-need-pytorch
 class MultiHeadAttention(nn.Module):
@@ -10,14 +11,14 @@ class MultiHeadAttention(nn.Module):
 
     def __init__(
         self,
-        n_head,
-        d_model,
-        d_k,
-        d_v,
-        dropout=0.0,
-        activation="softmax",
-        prenorm=False,
-    ):
+        n_head: int,
+        d_model: int,
+        d_k: int,
+        d_v: int,
+        dropout: float = 0.0,
+        activation: str = "softmax",
+        prenorm: bool = False,
+    ) -> None:
         super().__init__()
 
         self.n_head = n_head
@@ -36,7 +37,9 @@ class MultiHeadAttention(nn.Module):
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
         self.prenorm = prenorm
 
-    def forward(self, x, mask=None):
+    def forward(
+        self, x: torch.Tensor, mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
 
         x = x.unsqueeze(0)
 
@@ -83,7 +86,9 @@ class MultiHeadAttention(nn.Module):
 class ScaledDotProductAttention(nn.Module):
     """Scaled Dot-Product Attention"""
 
-    def __init__(self, temperature, dropout=0.0, activation="softmax"):
+    def __init__(
+        self, temperature: float, dropout: float = 0.0, activation: str = "softmax"
+    ) -> None:
         super().__init__()
         self.temperature = temperature
         self.dropout = nn.Dropout(dropout)
@@ -94,7 +99,13 @@ class ScaledDotProductAttention(nn.Module):
         else:
             raise ValueError("Unknown activation!")
 
-    def forward(self, q, k, v, neg_inf_mask=None):
+    def forward(
+        self,
+        q: torch.Tensor,
+        k: torch.Tensor,
+        v: torch.Tensor,
+        neg_inf_mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         # b x n x lq x dv
         attn = torch.matmul(
             q / self.temperature, k.transpose(2, 3)
@@ -111,7 +122,14 @@ class ScaledDotProductAttention(nn.Module):
 class PositionwiseFeedForward(nn.Module):
     """A two-feed-forward-layer module"""
 
-    def __init__(self, d_in, d_hid, dropout=0.0, activation="relu", prenorm=False):
+    def __init__(
+        self,
+        d_in: int,
+        d_hid: int,
+        dropout: float = 0.0,
+        activation: str = "relu",
+        prenorm: bool = False,
+    ) -> None:
         super().__init__()
         self.w_1 = nn.Linear(d_in, d_hid)  # position-wise
         self.w_2 = nn.Linear(d_hid, d_in)  # position-wise
@@ -120,7 +138,7 @@ class PositionwiseFeedForward(nn.Module):
         self.activation = getattr(F, activation)
         self.prenorm = prenorm
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         residual = x
         if self.prenorm:
             x = self.layer_norm(x)
@@ -137,16 +155,16 @@ class EncoderLayer(nn.Module):
 
     def __init__(
         self,
-        d_model,
-        d_inner,
-        n_head,
-        d_k,
-        d_v,
-        dropout=0.1,
-        activation_attn="softmax",
-        activation_ff="relu",
-        prenorm=False,
-    ):
+        d_model: int,
+        d_inner: int,
+        n_head: int,
+        d_k: int,
+        d_v: int,
+        dropout: float = 0.1,
+        activation_attn: str = "softmax",
+        activation_ff: str = "relu",
+        prenorm: bool = False,
+    ) -> None:
         super(EncoderLayer, self).__init__()
         self.slf_attn = MultiHeadAttention(
             n_head, d_model, d_k, d_v, dropout, activation_attn, prenorm
@@ -155,21 +173,23 @@ class EncoderLayer(nn.Module):
             d_model, d_inner, dropout, activation_ff, prenorm
         )
 
-    def forward(self, enc_input, mask=None):
+    def forward(
+        self, enc_input: torch.Tensor, mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         enc_output, attn = self.slf_attn(enc_input, mask)
         enc_output = self.pos_ffn(enc_output)
         return enc_output, attn
 
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, d_in):
+    def __init__(self, d_model: int, d_in: int) -> None:
         super().__init__()
         num_w = d_model // 2 // d_in
         self.num_pad = d_model - num_w * 2 * d_in
         w = 1e-3 ** torch.linspace(0, 1, num_w)
         self.w = nn.Parameter(w.view(1, -1, 1).repeat(1, 1, d_in))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.unsqueeze(1)
         x = torch.cat((torch.sin(self.w * x), torch.cos(self.w * x)), 1)
         x = x.flatten(1)
@@ -183,17 +203,17 @@ class TransformerEncoder(nn.Module):
 
     def __init__(
         self,
-        n_layers,
-        n_head,
-        d_k,
-        d_v,
-        d_model,
-        d_inner,
-        dropout,
-        activation_attn="softmax",
-        activation_ff="relu",
-        prenorm=False,
-    ):
+        n_layers: int,
+        n_head: int,
+        d_k: int,
+        d_v: int,
+        d_model: int,
+        d_inner: int,
+        dropout: float,
+        activation_attn: str = "softmax",
+        activation_ff: str = "relu",
+        prenorm: bool = False,
+    ) -> None:
 
         super().__init__()
 
@@ -217,7 +237,12 @@ class TransformerEncoder(nn.Module):
         self.prenorm = prenorm
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
 
-    def forward(self, x, pos_enc, mask=None):
+    def forward(
+        self,
+        x: torch.Tensor,
+        pos_enc: torch.Tensor,
+        mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
 
         enc_output = self.dropout(x + pos_enc)
         if not self.prenorm:  # post-norm
@@ -233,11 +258,13 @@ class TransformerEncoder(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, n_res, d_model, d_in=1, pretrained=False):
+    def __init__(
+        self, n_res: int, d_model: int, d_in: int = 1, pretrained: bool = False
+    ) -> None:
         super().__init__()
         resnet_fn = getattr(tvm, "resnet%d" % n_res)
         model = resnet_fn(
-            pretrained=pretrained,
+            # pretrained=pretrained,
             norm_layer=lambda x: nn.BatchNorm2d(x, track_running_stats=False),
         )
         model.fc = nn.Linear(model.fc.in_features, d_model)
@@ -248,7 +275,7 @@ class ResNet(nn.Module):
         self.model = model
         self.pretrained = pretrained
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.pretrained:
             x = x.expand(-1, 3, -1, -1)
         return self.model(x)

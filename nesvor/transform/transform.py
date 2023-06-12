@@ -1,13 +1,14 @@
 from __future__ import annotations
-from typing import Iterable
+from typing import Iterable, Union
 import torch
 import numpy as np
 from .transform_convert import axisangle2mat, mat2axisangle
+from ..utils import DeviceType
 
 
 class RigidTransform(object):
     def __init__(
-        self, data: torch.Tensor, trans_first: bool = True, device=None
+        self, data: torch.Tensor, trans_first: bool = True, device: DeviceType = None
     ) -> None:
         self.trans_first = trans_first
         self._axisangle = None
@@ -24,8 +25,10 @@ class RigidTransform(object):
     def matrix(self, trans_first: bool = True) -> torch.Tensor:
         if self._matrix is not None:
             mat = self._matrix
-        else:
+        elif self._axisangle is not None:
             mat = axisangle2mat(self._axisangle)
+        else:
+            raise ValueError("Both data are None!")
         if self.trans_first == True and trans_first == False:
             mat = mat_first2last(mat)
         elif self.trans_first == False and trans_first == True:
@@ -35,8 +38,10 @@ class RigidTransform(object):
     def axisangle(self, trans_first: bool = True) -> torch.Tensor:
         if self._axisangle is not None:
             ax = self._axisangle
-        else:
+        elif self._matrix is not None:
             ax = mat2axisangle(self._matrix)
+        else:
+            raise ValueError("Both data are None!")
         if self.trans_first == True and trans_first == False:
             ax = ax_first2last(ax)
         elif self.trans_first == False and trans_first == True:
@@ -94,11 +99,20 @@ class RigidTransform(object):
         return RigidTransform(data, self.trans_first)
 
     @property
-    def device(self):
+    def device(self) -> DeviceType:
         if self._axisangle is not None:
             return self._axisangle.device
         elif self._matrix is not None:
             return self._matrix.device
+        else:
+            raise Exception("Both data are None!")
+
+    @property
+    def dtype(self) -> torch.dtype:
+        if self._axisangle is not None:
+            return self._axisangle.dtype
+        elif self._matrix is not None:
+            return self._matrix.dtype
         else:
             raise Exception("Both data are None!")
 
@@ -114,6 +128,16 @@ class RigidTransform(object):
             return self._matrix.shape[0]
         else:
             raise Exception("Both data are None!")
+
+    def mean(self, trans_first=True, simple_mean=True) -> RigidTransform:
+        ax = self.axisangle(trans_first=trans_first)
+        if simple_mean:
+            ax_mean = ax.mean(0, keepdim=True)
+        else:
+            meanT = ax[:, 3:].mean(0, keepdim=True)
+            meanR = average_rotation(ax[:, :3])
+            ax_mean = torch.cat((meanR, meanT), -1)
+        return RigidTransform(ax_mean, trans_first=trans_first)
 
 
 def mat_first2last(mat: torch.Tensor) -> torch.Tensor:
@@ -144,14 +168,22 @@ def ax_last2first(axisangle: torch.Tensor) -> torch.Tensor:
     return mat2axisangle(mat)
 
 
-def mat_update_resolution(mat: torch.Tensor, res_from, res_to) -> torch.Tensor:
+def mat_update_resolution(
+    mat: torch.Tensor,
+    res_from: Union[float, torch.Tensor],
+    res_to: Union[float, torch.Tensor],
+) -> torch.Tensor:
     assert mat.dim() == 3
     fac = torch.ones_like(mat[:1, :1])
     fac[..., 3] = res_from / res_to
     return mat * fac
 
 
-def ax_update_resolution(ax: torch.Tensor, res_from, res_to) -> torch.Tensor:
+def ax_update_resolution(
+    ax: torch.Tensor,
+    res_from: Union[float, torch.Tensor],
+    res_to: Union[float, torch.Tensor],
+) -> torch.Tensor:
     assert ax.dim() == 2
     fac = torch.ones_like(ax[:1])
     fac[:, 3:] = res_from / res_to
@@ -240,7 +272,7 @@ def point2mat(p: torch.Tensor) -> torch.Tensor:
     return torch.cat((R, T), -1)
 
 
-def mat2point(mat: torch.Tensor, sx, sy, rs) -> torch.Tensor:
+def mat2point(mat: torch.Tensor, sx: int, sy: int, rs: float) -> torch.Tensor:
     p1 = torch.tensor([-(sx - 1) / 2 * rs, -(sy - 1) / 2 * rs, 0]).to(
         dtype=mat.dtype, device=mat.device
     )
@@ -287,3 +319,55 @@ def transform_points(transform: RigidTransform, x: torch.Tensor) -> torch.Tensor
     trans_first = transform.trans_first
     mat = transform.matrix(trans_first)
     return mat_transform_points(mat, x, trans_first)
+
+
+def init_stack_transform(
+    n_slice: int, gap: float, device: DeviceType
+) -> RigidTransform:
+    ax = torch.zeros((n_slice, 6), dtype=torch.float32, device=device)
+    ax[:, -1] = (
+        torch.arange(n_slice, dtype=torch.float32, device=device) - (n_slice - 1) / 2.0
+    ) * gap
+    return RigidTransform(ax, trans_first=True)
+
+
+def init_zero_transform(n: int, device: DeviceType) -> RigidTransform:
+    return RigidTransform(torch.zeros((n, 6), dtype=torch.float32, device=device))
+
+
+def average_rotation(R: torch.Tensor) -> torch.Tensor:
+    import scipy
+    from scipy.spatial.transform import Rotation
+
+    dtype = R.dtype
+    device = R.device
+    Rmat = Rotation.from_rotvec(R.cpu().numpy()).as_matrix()
+    R = Rotation.from_rotvec(R.cpu().numpy()).as_quat()
+    for i in range(R.shape[0]):
+        if np.linalg.norm(R[i] + R[0]) < np.linalg.norm(R[i] - R[0]):
+            R[i] *= -1
+    barR = np.mean(R, 0)
+    barR = barR / np.linalg.norm(barR)
+
+    S_new = S = Rotation.from_quat(barR).as_matrix()
+    R = Rmat
+    i = 0
+    while np.all(np.isreal(S_new)) and np.all(np.isfinite(S_new)) and i < 10:
+        S = S_new
+        i += 1
+        sum_vmatrix_normed = np.zeros((3, 3))
+        sum_inv_norm_vmatrix = 0
+        for j in range(R.shape[0]):
+            vmatrix = scipy.linalg.logm(np.matmul(R[j], np.linalg.inv(S)))
+            vmatrix_normed = vmatrix / np.linalg.norm(vmatrix, ord=2, axis=(0, 1))
+            sum_vmatrix_normed += vmatrix_normed
+            sum_inv_norm_vmatrix += 1 / np.linalg.norm(vmatrix, ord=2, axis=(0, 1))
+
+        delta = sum_vmatrix_normed / sum_inv_norm_vmatrix
+        if np.all(np.isfinite(delta)):
+            S_new = np.matmul(scipy.linalg.expm(delta), S)
+        else:
+            break
+
+    S = Rotation.from_matrix(S).as_rotvec()
+    return torch.tensor(S[None], dtype=dtype, device=device)

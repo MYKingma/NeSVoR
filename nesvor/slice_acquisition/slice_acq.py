@@ -1,22 +1,33 @@
-from torch import nn
+from typing import Optional, Sequence
+import logging
 from torch.autograd import Function
 import torch
+from .slice_acq_torch import slice_acquisition_torch, slice_acquisition_adjoint_torch
 
-try:
-    import nesvor.slice_acq_cuda as slice_acq_cuda
-except ImportError:
-    from torch.utils.cpp_extension import load
-    import os
+USE_TORCH = False
 
-    dirname = os.path.dirname(__file__)
-    slice_acq_cuda = load(
-        "slice_acq_cuda",
-        [
-            os.path.join(dirname, "slice_acq_cuda.cpp"),
-            os.path.join(dirname, "slice_acq_cuda_kernel.cu"),
-        ],
-        verbose=False,
-    )
+if not USE_TORCH:
+    try:
+        import nesvor.slice_acq_cuda as slice_acq_cuda
+    except ImportError:
+        try:
+            from torch.utils.cpp_extension import load
+            import os
+
+            dirname = os.path.dirname(__file__)
+            slice_acq_cuda = load(
+                "slice_acq_cuda",
+                [
+                    os.path.join(dirname, "slice_acq_cuda.cpp"),
+                    os.path.join(dirname, "slice_acq_cuda_kernel.cu"),
+                ],
+                verbose=False,
+            )
+        except:
+            logging.warning(
+                "Fail to load CUDA extention for slice_acq. Will use pytorch implementation."
+            )
+            USE_TORCH = True
 
 
 class SliceAcqFunction(Function):
@@ -164,48 +175,80 @@ class SliceAcqAdjointFunction(Function):
 
 
 def slice_acquisition(
-    transforms,
-    vol,
-    vol_mask,
-    slices_mask,
-    psf,
-    slice_shape,
-    res_slice,
-    need_weight,
-    interp_psf,
+    transforms: torch.Tensor,
+    vol: torch.Tensor,
+    vol_mask: Optional[torch.Tensor],
+    slices_mask: Optional[torch.Tensor],
+    psf: torch.Tensor,
+    slice_shape: Sequence,
+    res_slice: float,
+    need_weight: bool,
+    interp_psf: bool,
 ):
-    return SliceAcqFunction.apply(
-        transforms,
-        vol,
-        vol_mask,
-        slices_mask,
-        psf,
-        slice_shape,
-        res_slice,
-        need_weight,
-        interp_psf,
-    )
+    assert transforms.ndim == 3
+    assert vol.ndim == 5
+    assert vol_mask is None or vol_mask.ndim == 5
+    assert slices_mask is None or slices_mask.ndim == 4
+    if USE_TORCH or ("cpu" in str(transforms.device)):
+        return slice_acquisition_torch(
+            transforms,
+            vol,
+            vol_mask,
+            slices_mask,
+            psf,
+            slice_shape,
+            res_slice,
+            need_weight,
+        )
+    else:
+        return SliceAcqFunction.apply(
+            transforms,
+            vol,
+            vol_mask,
+            slices_mask,
+            psf,
+            slice_shape,
+            res_slice,
+            need_weight,
+            interp_psf,
+        )
 
 
 def slice_acquisition_adjoint(
-    transforms,
-    psf,
-    slices,
-    slices_mask,
-    vol_mask,
-    vol_shape,
-    res_slice,
-    interp_psf,
-    equalize,
+    transforms: torch.Tensor,
+    psf: torch.Tensor,
+    slices: torch.Tensor,
+    slices_mask: Optional[torch.Tensor],
+    vol_mask: Optional[torch.Tensor],
+    vol_shape: Sequence,
+    res_slice: float,
+    interp_psf: bool,
+    equalize: bool,
 ):
-    return SliceAcqAdjointFunction.apply(
-        transforms,
-        psf,
-        slices,
-        slices_mask,
-        vol_mask,
-        vol_shape,
-        res_slice,
-        interp_psf,
-        equalize,
-    )
+    assert transforms.ndim == 3
+    assert slices.ndim == 4
+    assert vol_mask is None or vol_mask.ndim == 5
+    assert slices_mask is None or slices_mask.ndim == 4
+    if USE_TORCH or ("cpu" in str(transforms.device)):
+        return slice_acquisition_adjoint_torch(
+            transforms,
+            psf,
+            slices,
+            slices_mask,
+            vol_mask,
+            vol_shape,
+            res_slice,
+            equalize,
+        )
+    else:
+        return SliceAcqAdjointFunction.apply(
+            transforms,
+            psf,
+            slices,
+            slices_mask,
+            vol_mask,
+            vol_shape,
+            res_slice,
+            interp_psf,
+            equalize,
+        )

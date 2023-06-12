@@ -4,6 +4,7 @@ from argparse import Namespace
 import logging
 import traceback
 import sys
+import io
 
 
 class LazyLog(object):
@@ -54,7 +55,7 @@ def log_params(model: torch.nn.Module) -> LazyLog:
     return LazyLog(_log_params, model)
 
 
-def log_args(args: Namespace):
+def log_args(args: Namespace) -> None:
     d = vars(args)
     logging.debug(
         "input arguments\n"
@@ -65,7 +66,14 @@ def log_args(args: Namespace):
     )
 
 
+_initialized = False
+
+
 def setup_logger(filename: Optional[str], verbose: int) -> None:
+    global _initialized
+    if _initialized:
+        return
+    _initialized = True
     if verbose == 0:
         level = logging.WARNING
     elif verbose == 1:
@@ -99,3 +107,25 @@ def setup_logger(filename: Optional[str], verbose: int) -> None:
         logging.error("Unhandled exception:\n%s", text)
 
     sys.excepthook = log_except_hook
+
+    levelNum = logging.WARNING + 5
+    levelName = "RESULT"
+
+    logging.addLevelName(levelNum, levelName)
+    setattr(logging, levelName, levelNum)
+
+
+def log_result(message, *args, **kwargs):
+    return logging.log(getattr(logging, "RESULT"), message, *args, **kwargs)
+
+
+class LogIO(io.StringIO):
+    def __init__(self, fn, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.fn = fn
+
+    def write(self, __s: str) -> int:
+        __s = __s.strip()
+        if __s:
+            self.fn(__s)
+        return super().write(__s)

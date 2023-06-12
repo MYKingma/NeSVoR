@@ -1,16 +1,13 @@
 checkpoints/
 .vscode/
 .mypy_cache
-*.pt
-*.log
 /test_*.py
-output_slices/
-simulated_slices/
 *.nii
 *.nii.gz
 data
 *.zip
 .DS_Store
+/docker/NeSVoR/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

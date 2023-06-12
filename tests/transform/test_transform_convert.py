@@ -5,6 +5,8 @@ from nesvor.transform import (
     point2mat,
     mat2euler,
     euler2mat,
+    axisangle2mat_torch,
+    mat2axisangle_torch,
 )
 from tests import TestCaseNeSVoR
 
@@ -31,3 +33,13 @@ class TestTransformConvert(TestCaseNeSVoR):
             euler = mat2euler(mat)
             mat_ = euler2mat(euler)
             self.assert_tensor_close(mat_, mat)
+
+    def test_axisangle2mat_torch(self):
+        for ax, mat in self.get_transform_test_data():
+            mat_ = axisangle2mat_torch(ax)
+            self.assert_tensor_close(mat_, mat)
+
+    def test_mat2axisangle_torch(self):
+        for ax, mat in self.get_transform_test_data():
+            ax_ = mat2axisangle_torch(mat)
+            self.assert_tensor_close(ax_, ax)

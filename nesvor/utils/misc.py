@@ -1,9 +1,19 @@
-from typing import Dict, List, Any, Optional, Union, Collection, Iterable
+from typing import Dict, List, Any, Optional, Union, Collection, Iterable, Sequence
 import torch
 import torch.nn.functional as F
 import collections
 from argparse import Namespace
 import os
+import random
+import numpy as np
+from .types import DeviceType
+
+
+def set_seed(seed: Optional[int]) -> None:
+    if seed is not None:
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
 
 
 def makedirs(path: Union[str, Iterable[str]]) -> None:
@@ -26,14 +36,37 @@ def merge_args(args_old: Namespace, args_new: Namespace) -> Namespace:
     return Namespace(**dict_old)
 
 
+def resample(
+    x: torch.Tensor, res_xyz_old: Sequence, res_xyz_new: Sequence
+) -> torch.Tensor:
+    ndim = x.ndim - 2
+    assert len(res_xyz_new) == len(res_xyz_old) == ndim
+    if all(r_new == r_old for (r_new, r_old) in zip(res_xyz_new, res_xyz_old)):
+        return x
+    grids = []
+    for i in range(ndim):
+        fac = res_xyz_old[i] / res_xyz_new[i]
+        size_new = int(x.shape[-i - 1] * fac)
+        grid_max = (size_new - 1) / fac / (x.shape[-i - 1] - 1)
+        grids.append(
+            torch.linspace(
+                -grid_max, grid_max, size_new, dtype=x.dtype, device=x.device
+            )
+        )
+    grid = torch.stack(torch.meshgrid(*grids[::-1], indexing="ij")[::-1], -1)
+    y = F.grid_sample(
+        x, grid[None].expand((x.shape[0],) + (-1,) * (ndim + 1)), align_corners=True
+    )
+    return y
+
+
 def meshgrid(
     shape_xyz: Collection,
     resolution_xyz: Collection,
     min_xyz: Optional[Collection] = None,
-    device=None,
+    device: DeviceType = None,
     stack_output: bool = True,
 ):
-
     assert len(shape_xyz) == len(resolution_xyz)
     if min_xyz is None:
         min_xyz = tuple(-(s - 1) * r / 2 for s, r in zip(shape_xyz, resolution_xyz))
@@ -80,7 +113,9 @@ def gaussian_blur(
 
 
 # from MONAI
-def gaussian_1d_kernel(sigma: float, truncated: float, device) -> torch.Tensor:
+def gaussian_1d_kernel(
+    sigma: float, truncated: float, device: DeviceType
+) -> torch.Tensor:
     tail = int(max(sigma * truncated, 0.5) + 0.5)
     x = torch.arange(-tail, tail + 1, dtype=torch.float, device=device)
     t = 0.70710678 / sigma

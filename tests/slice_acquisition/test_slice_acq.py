@@ -2,7 +2,7 @@ from tests import TestCaseNeSVoR
 from nesvor.transform import RigidTransform, mat_update_resolution
 from nesvor.slice_acquisition import slice_acquisition
 from nesvor.utils import get_PSF
-from nesvor.svort.srr import SRR
+from nesvor.svort.models import SRR
 from tests.phantom3d import phantom3d
 import torch
 import numpy as np
@@ -75,7 +75,7 @@ class TestSliceAcq(TestCaseNeSVoR):
 
     def test_cg_recon(self):
         slices, transforms, volume, params = self.get_cg_recon_test_data()
-        srr = SRR(n_iter=20, use_CG=True, tol=1e-8)
+        srr = SRR(n_iter=20, tol=1e-8)
         theta = mat_update_resolution(transforms.matrix(), 1, params["res_r"])
         volume_ = srr(theta, slices, volume, params)
         self.assert_tensor_close(volume_, volume, atol=3e-5, rtol=1e-5)

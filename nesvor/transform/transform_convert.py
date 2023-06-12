@@ -1,20 +1,32 @@
+import logging
 from torch.autograd import Function
+import torch
+from .transform_convert_torch import axisangle2mat_torch, mat2axisangle_torch
 
-try:
-    import nesvor.transform_convert_cuda as transform_convert_cuda
-except ImportError:
-    from torch.utils.cpp_extension import load
-    import os
+USE_TORCH = False
 
-    dirname = os.path.dirname(__file__)
-    transform_convert_cuda = load(
-        "transform_convert_cuda",
-        [
-            os.path.join(dirname, "transform_convert_cuda.cpp"),
-            os.path.join(dirname, "transform_convert_cuda_kernel.cu"),
-        ],
-        verbose=False,
-    )
+if not USE_TORCH:
+    try:
+        import nesvor.transform_convert_cuda as transform_convert_cuda
+    except ImportError:
+        try:
+            from torch.utils.cpp_extension import load
+            import os
+
+            dirname = os.path.dirname(__file__)
+            transform_convert_cuda = load(
+                "transform_convert_cuda",
+                [
+                    os.path.join(dirname, "transform_convert_cuda.cpp"),
+                    os.path.join(dirname, "transform_convert_cuda_kernel.cu"),
+                ],
+                verbose=False,
+            )
+        except:
+            logging.warning(
+                "Fail to load CUDA extention for transform_convert. Will use pytorch implementation."
+            )
+            USE_TORCH = True
 
 
 class Axisangle2MatFunction(Function):
@@ -49,9 +61,15 @@ class Mat2AxisangleFunction(Function):
         return grad_mat
 
 
-def axisangle2mat(axisangle):
-    return Axisangle2MatFunction.apply(axisangle)
+def axisangle2mat(axisangle: torch.Tensor) -> torch.Tensor:
+    if USE_TORCH or ("cpu" in str(axisangle.device)):
+        return axisangle2mat_torch(axisangle)
+    else:
+        return Axisangle2MatFunction.apply(axisangle)
 
 
-def mat2axisangle(mat):
-    return Mat2AxisangleFunction.apply(mat)
+def mat2axisangle(mat: torch.Tensor) -> torch.Tensor:
+    if USE_TORCH or ("cpu" in str(mat.device)):
+        return mat2axisangle_torch(mat)
+    else:
+        return Mat2AxisangleFunction.apply(mat)
